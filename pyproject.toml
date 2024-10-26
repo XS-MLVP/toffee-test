@@ -1,0 +1,31 @@
+[build-system]
+requires = [
+    "hatchling",
+    "hatch-vcs",
+]
+build-backend = "hatchling.build"
+
+[project]
+name = "toffee-test"
+description = "pytest plugin for toffee testing"
+readme = "README.md"
+license = {file="LICENSE"}
+classifiers = [
+
+]
+requires-python = ">=3.8"
+dependencies = [
+    "pytest>=7.0.0",
+    'pytest-reporter-html1>=0.8.4',
+    'pytest-xdist>=3.5.0',
+]
+dynamic = ["version"]
+
+[project.entry-points.pytest11]
+toffee-test = "toffee_test.plugin"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "toffee_test/__version.py"
