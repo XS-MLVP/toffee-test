@@ -1,3 +1,4 @@
+import toffee
 import pytest
 import inspect
 from .reporter import process_func_coverage, process_context
@@ -46,7 +47,7 @@ def pytest_addoption(parser):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
-    config.addinivalue_line("markers", "toffee_async: mark test to run with toffee's event loop")
+    config.addinivalue_line("markers", "mlvp_async: mark test to run with toffee's event loop")
 
     if config.getoption("--toffee-report"):
         config.option.template = ["html/toffee.html"]
@@ -70,9 +71,12 @@ toffee async test
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_pyfunc_call(pyfuncitem):
-    if "toffee_async" in pyfuncitem.keywords:
+    if "mlvp_async" in pyfuncitem.keywords:
+        toffee.warning("test marked with mlvp_async will be deprecated in the future, please use \
+                        @toffee_test.case instead")
+
         func = pyfuncitem.obj
-        assert inspect.iscoroutinefunction(func), "test marked with toffee_async must be a coroutine function"
+        assert inspect.iscoroutinefunction(func), "test marked with mlvp_async must be a coroutine function"
 
         signature = inspect.signature(func)
         filtered_funcargs = {

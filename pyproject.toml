@@ -15,7 +15,7 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "pytest>=7.0.0",
+    'pytest>=7.0.0',
     'pytest-reporter-html1>=0.8.4',
     'pytest-xdist>=3.5.0',
     'pytest-asyncio>=0.23.0',
