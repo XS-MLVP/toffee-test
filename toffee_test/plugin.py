@@ -96,4 +96,3 @@ def toffee_request(request):
     request_info.finish(request)
 
 mlvp_pre_request = toffee_request
-PreRequest = ToffeeRequest

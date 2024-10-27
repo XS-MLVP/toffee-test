@@ -109,3 +109,5 @@ class ToffeeRequest:
             g.clear()
 
         self.cov_groups.clear()
+
+PreRequest = ToffeeRequest
