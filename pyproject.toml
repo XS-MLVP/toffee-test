@@ -34,6 +34,9 @@ Tracker = "https://github.com/XS-MLVP/toffee-test/issues"
 [project.entry-points.pytest11]
 toffee-test = "toffee_test.plugin"
 
+[tool.hatch.build.targets.sdist]
+exclude = ["/.github"]
+
 [tool.hatch.version]
 source = "vcs"
 
