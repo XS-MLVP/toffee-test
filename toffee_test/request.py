@@ -1,5 +1,8 @@
 import os
-from .reporter import set_func_coverage, set_line_coverage
+
+from .reporter import set_func_coverage
+from .reporter import set_line_coverage
+
 
 class ToffeeRequest:
     def __init__(self, request):
@@ -36,7 +39,9 @@ class ToffeeRequest:
 
         return self.request.config.getoption("--toffee-report")
 
-    def create_dut(self, dut_cls, clock_name=None, waveform_filename=None, coverage_filename=None):
+    def create_dut(
+        self, dut_cls, clock_name=None, waveform_filename=None, coverage_filename=None
+    ):
         """
         Create the DUT.
 
@@ -53,8 +58,12 @@ class ToffeeRequest:
         if self.__need_report():
             report_dir = os.path.dirname(self.request.config.option.report[0])
 
-            self.waveform_filename = f"{report_dir}/{dut_cls.__name__}_{self.request_name}.fst"
-            self.coverage_filename = f"{report_dir}/{dut_cls.__name__}_{self.request_name}.dat"
+            self.waveform_filename = (
+                f"{report_dir}/{dut_cls.__name__}_{self.request_name}.fst"
+            )
+            self.coverage_filename = (
+                f"{report_dir}/{dut_cls.__name__}_{self.request_name}.dat"
+            )
 
             if waveform_filename is not None:
                 self.waveform_filename = waveform_filename
@@ -63,14 +72,13 @@ class ToffeeRequest:
 
             self.dut = dut_cls(
                 waveform_filename=self.waveform_filename,
-                coverage_filename=self.coverage_filename
+                coverage_filename=self.coverage_filename,
             )
 
             if self.cov_groups is not None:
                 self.__add_cov_sample(self.cov_groups)
         else:
             self.dut = dut_cls()
-
 
         if clock_name:
             self.dut.InitClock(clock_name)
@@ -109,5 +117,6 @@ class ToffeeRequest:
             g.clear()
 
         self.cov_groups.clear()
+
 
 PreRequest = ToffeeRequest

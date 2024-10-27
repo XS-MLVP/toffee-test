@@ -1,9 +1,11 @@
-import toffee
-import pytest
-import pytest_asyncio
 import functools
 
+import pytest
+import pytest_asyncio
+import toffee
+
 fixture = pytest_asyncio.fixture
+
 
 def case(func):
     func.is_toffee_testcase = True

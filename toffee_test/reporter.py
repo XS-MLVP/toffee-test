@@ -1,19 +1,25 @@
-import os
 import json
+import os
 import uuid
 from collections import Counter
 from datetime import datetime
+
 from toffee.funcov import CovGroup
+
 from .utils import convert_line_coverage
+
 
 def get_default_report_name():
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
     return f"report-{current_time}/report-{current_time}.html"
 
+
 def get_template_dir():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 
+
 __output_report_dir__ = None
+
 
 def set_output_report(report_path):
     report_dir = os.path.dirname(report_path)
@@ -23,19 +29,25 @@ def set_output_report(report_path):
     global __output_report_dir__
     __output_report_dir__ = report_dir
 
+
 def __update_line_coverage__(__line_coverage__=None):
     if __line_coverage__ is None:
         return None
     if len(__line_coverage__) == 0:
         return None
-    hint, all = convert_line_coverage(__line_coverage__, os.path.join(__output_report_dir__, "line_dat"))
-    assert os.path.exists(os.path.join(__output_report_dir__, "line_dat/index.html")), "Failed to convert line coverage"
+    hint, all = convert_line_coverage(
+        __line_coverage__, os.path.join(__output_report_dir__, "line_dat")
+    )
+    assert os.path.exists(
+        os.path.join(__output_report_dir__, "line_dat/index.html")
+    ), "Failed to convert line coverage"
 
     return {
         "hints": hint,
         "total": all,
         "grate": __report_info__.get("line_grate", 90),
     }
+
 
 def __update_func_coverage__(__func_coverage__):
     if __func_coverage__ is None:
@@ -83,15 +95,16 @@ def __update_func_coverage__(__func_coverage__):
                 elif isinstance(result[key], list) and isinstance(value, list):
                     if key == "points" or key == "bins":
                         if key == "bins":
-                            assert Counter([x['name'] for x in value]) == Counter(x['name'] for x in result[key]), f"bins in points {dict1['name']} should be same"
+                            assert Counter([x["name"] for x in value]) == Counter(
+                                x["name"] for x in result[key]
+                            ), f"bins in points {dict1['name']} should be same"
                         old_keys = {a["name"]: i for i, a in enumerate(result[key])}
                         for data in value:
                             if data["name"] not in old_keys:
                                 result[key].append(data)
                             else:
                                 result[key][old_keys[data["name"]]] = merge_dicts(
-                                    result[key][old_keys[data["name"]]],
-                                    data
+                                    result[key][old_keys[data["name"]]], data
                                 )
                 elif isinstance(result[key], bool) and isinstance(value, bool):
                     if key == "has_once":
@@ -103,10 +116,13 @@ def __update_func_coverage__(__func_coverage__):
                 elif result[key] == value:
                     continue  # Same value, do nothing
                 else:
-                    raise ValueError(f"Conflict at key '{key}': {result[key]} vs {value}")
+                    raise ValueError(
+                        f"Conflict at key '{key}': {result[key]} vs {value}"
+                    )
             else:
                 result[key] = value
         return result
+
     def merge_dicts_list(dicts: list):
         """Merge a list of dictionaries."""
         result = {}
@@ -116,6 +132,7 @@ def __update_func_coverage__(__func_coverage__):
             else:
                 result[d["name"]] = d
         return [v for _, v in result.items()]
+
     coverage["groups"] = merge_dicts_list([parse_group(g) for g in __func_coverage__])
 
     # Recalculate the groups hinted situation
@@ -167,6 +184,7 @@ __report_info__ = {
     "meta": {},
 }
 
+
 def process_context(context, config):
     def set_ctx(key, value):
         if value is None:
@@ -177,7 +195,7 @@ def process_context(context, config):
         context["metadata"].pop(k, None)
 
     set_ctx("user", __report_info__["user"])
-    set_ctx("title",  __report_info__["title"])
+    set_ctx("title", __report_info__["title"])
     context["metadata"].update(__report_info__["meta"])
 
     coverage_func_list = []
@@ -204,49 +222,63 @@ def process_context(context, config):
 
     context["coverages"] = {
         "line": __update_line_coverage__(coverage_line_list),
-        "functional": __update_func_coverage__(coverage_func_list)
+        "functional": __update_func_coverage__(coverage_func_list),
     }
+
 
 def set_func_coverage(request, g):
     if not isinstance(g, list):
         g = [g]
     for i in g:
-        assert isinstance(i, CovGroup), "g should be an instance of CovGroup or list of CovGroup"
+        assert isinstance(
+            i, CovGroup
+        ), "g should be an instance of CovGroup or list of CovGroup"
     request.node.__coverage_group__ = [str(x) for x in g]
+
 
 def set_line_coverage(request, datfile):
     assert isinstance(datfile, str), "datfile should be a string"
     request.node.__line_coverage__ = datfile
 
+
 def process_func_coverage(item, call, report):
-    if call.when != 'teardown':
+    if call.when != "teardown":
         return
     if hasattr(item, "__coverage_group__"):
         groups = []
         for g in item.__coverage_group__:
-            assert isinstance(g, str), "item.__coverage_group__ should be an instance of CovGroup"
-            groups.append({
-                "hash": "%s" % hash(g),
-                "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
-                "data": g
-            })
+            assert isinstance(
+                g, str
+            ), "item.__coverage_group__ should be an instance of CovGroup"
+            groups.append(
+                {
+                    "hash": "%s" % hash(g),
+                    "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
+                    "data": g,
+                }
+            )
         report.__coverage_group__ = groups
     if hasattr(item, "__line_coverage__"):
-        assert isinstance(item.__line_coverage__, str), "item.__line_coverage__ should be a string"
+        assert isinstance(
+            item.__line_coverage__, str
+        ), "item.__line_coverage__ should be a string"
         report.__line_coverage__ = {
             "hash": "%s" % hash(item.__line_coverage__),
             "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
-            "data": item.__line_coverage__
+            "data": item.__line_coverage__,
         }
     return report
+
 
 def set_user_info(name, code):
     global __report_info__
     __report_info__["user"] = {"name": name, "code": code}
 
+
 def set_title_info(title):
     global __report_info__
     __report_info__["title"] = title
+
 
 def set_meta_info(key, value, is_del=False):
     global __report_info__
@@ -254,6 +286,7 @@ def set_meta_info(key, value, is_del=False):
         del __report_info__["meta"][key]
     else:
         __report_info__["meta"][key] = value
+
 
 def set_line_good_rate(rate):
     global __report_info__
