@@ -2,32 +2,34 @@
 
 [![PyPI version](https://badge.fury.io/py/toffee-test.svg)](https://badge.fury.io/py/toffee-test)
 
-toffee-test 是一个用于为 toffee 框架提供测试支持的 Pytest 插件，他为 toffee 框架提供了以下测试功能，以便于用户编写测试用例。
-- 将测试用例函数标识为 toffee 的测试用例对象，使其可以被 toffee 框架识别并执行
-- 提供了测试用例资源的管理功能，例如 DUT 创建、销毁等
-- 提供了测试报告生成功能
+[English Version](README.md) | [中文版本](README_zh.md)
 
-## 使用方法
+toffee-test is a pytest plugin that provides testing support for the toffee framework. It includes several features to assist users in writing test cases for toffee:
+- Identifies test functions as toffee test case objects, making them recognizable and executable by the toffee framework
+- Offers resource management for test cases, such as DUT creation and destruction
+- Provides test report generation
 
-### 安装
+## Usage
 
-- 正确安装 [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) 及其依赖
+### Installation
 
-- 安装 toffee-test
+- Properly install [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and its dependencies.
 
-通过 pip 安装 toffee-test
+- Install toffee-test
+
+To install toffee-test via pip:
 
 ```bash
 pip install toffee-test
 ```
 
-或安装开发版本
+Or install the development version:
 
 ```bash
 pip install toffee-test@git+https://github.com/XS-MLVP/toffee-test@master
 ```
 
-或通过源码安装
+Or install from source:
 
 ```bash
 git clone https://github.com/XS-MLVP/toffee-test.git
@@ -35,13 +37,13 @@ cd toffee-test
 pip3 install .
 ```
 
-## 使用
+## Usage
 
-### 管理测试用例资源
+### Managing Test Case Resources
 
-toffee-test 提供了 `toffee_request` Fixture，可用于管理测试用例资源。使用时利用 `toffee_request` 创建自己的 Fixture，然后在测试用例中使用。
+toffee-test provides the `toffee_request` fixture for managing test case resources. Use `toffee_request` to create your own fixture, which can then be used within test cases.
 
-例如以下案例中创建了一个 Fixture 用于管理 DUT 的创建和销毁。
+For example, the following code creates a fixture to manage DUT creation and destruction.
 
 ```python
 import toffee_test
@@ -52,28 +54,28 @@ def my_fixture(toffee_request: toffee_test.ToffeeRequest):
     return toffee_request.create_dut(MyDUT, "clock_pin_name")
 ```
 
-toffee_request 中提供的接口如下：
+Interfaces provided in `toffee_request` include:
 
-- `create_dut`：创建 DUT
-    - `dut_cls`：DUT 类
-    - `clock_name`：时钟名称
-    - `waveform_filename`：波形文件名
-    - `coverage_filename`：覆盖文件名
-- `add_cov_groups`：添加覆盖组
-    - `cov_groups`：覆盖组
-    - `periodic_sample`：是否周期采样
+- `create_dut`: Creates a DUT
+    - `dut_cls`: DUT class
+    - `clock_name`: Clock name
+    - `waveform_filename`: Waveform file name
+    - `coverage_filename`: Coverage file name
+- `add_cov_groups`: Adds coverage groups
+    - `cov_groups`: Coverage groups
+    - `periodic_sample`: Periodic sampling option
 
 
-### 标识测试用例
+### Marking Test Cases
 
-通过 `@toffee_test.testcase` 装饰器标识测试用例函数，使其可以被 toffee 框架识别并执行。
+Use the `@toffee_test.testcase` decorator to mark test functions, making them recognizable and executable by the toffee framework.
 
-### 生成测试报告
+### Generating Test Reports
 
-通过在 pytest 命令行中添加 `--toffee-report` 参数，可以生成 toffee 测试报告。
+By adding the `--toffee-report` parameter to the pytest command line, you can generate a toffee test report.
 
-此外，`--report-name` 参数可以指定报告名称，`--report-dir` 参数可以指定报告存放目录。
+Additionally, the `--report-name` parameter can specify the report name, and `--report-dir` can specify the report directory.
 
-## 更多资源
+## Additional Resources
 
-更多资源可在 [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) 和 [万众一芯开放验证](https://open-verify.cc/) 中获取。
+More resources are available at [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and [Open Verify](https://open-verify.cc/).
