@@ -76,4 +76,4 @@ Additionally, the `--report-name` parameter can specify the report name, and `--
 
 ## Additional Resources
 
-More resources are available at [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and [Open Verify](https://open-verify.cc/).
+More resources are available at [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and [UnityChip Website](https://open-verify.cc/).
