@@ -9,9 +9,7 @@ toffee-test 是一个用于为 toffee 框架提供测试支持的 Pytest 插件�
 - 提供了测试用例资源的管理功能，例如 DUT 创建、销毁等
 - 提供了测试报告生成功能
 
-## 使用方法
-
-### 安装
+## 安装
 
 - 正确安装 [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) 及其依赖
 

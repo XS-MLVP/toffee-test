@@ -9,9 +9,7 @@ toffee-test is a pytest plugin that provides testing support for the toffee fram
 - Offers resource management for test cases, such as DUT creation and destruction
 - Provides test report generation
 
-## Usage
-
-### Installation
+## Installation
 
 - Properly install [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and its dependencies.
 
