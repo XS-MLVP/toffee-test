@@ -7,7 +7,7 @@ import toffee
 fixture = pytest_asyncio.fixture
 
 
-def case(func):
+def testcase(func):
     func.is_toffee_testcase = True
 
     @functools.wraps(func)
