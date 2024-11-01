@@ -10,9 +10,10 @@ from .reporter import get_template_dir
 from .reporter import process_context
 from .reporter import process_func_coverage
 from .reporter import set_output_report
+from .markers import toffee_tags_process
 
 """
-toffee report
+toffee plugin
 """
 
 
@@ -22,10 +23,25 @@ def pytest_reporter_context(context, config):
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_call(item):
+    call = yield
+    if call.excinfo is not None:
+        eclass, evalue, _ = call.excinfo
+        ignore_exceptions = getattr(pytest, "toffee_ignore_exceptions", [])
+        if eclass.__name__ in ignore_exceptions:
+            call.force_exception(pytest.skip.Exception(
+                    "Skiped exception: '%s(%s)'" % (eclass.__name__, evalue)))
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
     return process_func_coverage(item, call, report)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    toffee_tags_process(item)
 
 
 def pytest_addoption(parser):
@@ -51,7 +67,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "mlvp_async: mark test to run with toffee's event loop"
     )
-
+    config.addinivalue_line(
+        "markers", toffee_tags_process.__doc__
+    )
     if config.getoption("--toffee-report"):
         config.option.template = ["html/toffee.html"]
         config.option.template_dir = [get_template_dir()]

@@ -1,0 +1,148 @@
+
+import sys
+import re
+import fnmatch
+
+
+def toffee_tags_process(item):
+    '''toffee_tags(tag_list: Optional[list, str],         # eg ["tag1", "tag2"], "tag1"
+                   version_list: Optional[list,str] = [], # eg ["v1", "v2"], "v1+", "v1-", "v1<v2",
+                   skip_call_back=None # is skip_call_back(tag_list, version_list, item): (skip, resion). if skip is true, skip the test
+                   )
+        eg:
+        @pytest.mark.toffee_tags(["tag1", "tag2"], ["kmh-tag-number1", "kmh-tag-number2"])
+        def test_case1(...):
+            pass
+    '''
+    import pytest
+    marker = item.get_closest_marker("toffee_tags")
+    kwargs = {
+        "item": item,
+    }
+    need_args = ["tag_list", "version_list", "skip_call_back"]
+    if marker:
+        assert len(marker.args) < len(need_args), "Too many args, only need 3 (tag_list, version_list, skip_call_back)"
+        for i, arg in enumerate(marker.args):
+            kwargs[need_args[i]] = arg
+        for key, value in marker.kwargs.items():
+            assert key in need_args, f"Unknown key {key}"
+            assert key not in kwargs, f"Duplicate args {key}"
+            kwargs[key] = value        
+    else:
+        for arg in need_args:
+            kwargs[arg] = getattr(item.module, "toffee_%s"%arg, None)
+    skip, reason = skip_process_test_tag_version(**kwargs)
+    if skip:
+        pytest.skip(reason)
+    skip, reason = skip_process_test_cases(item.name, item.module.__name__)
+    if skip:
+        pytest.skip(reason)
+
+
+def grep_last_number(s: str):
+    m = list(re.finditer(r'(\d+(\.\d+)?)(?!.*\d)', s))
+    if m:
+        lm = m[-1]
+        return float(lm.group(1)), s[:lm.start()]
+    return None, ""
+
+
+def match_veriosn(version, version_list):
+    if not version:
+        return True
+    version = version.strip()
+    if not version_list:
+        return True
+    if isinstance(version_list, list):
+        if len(version_list) == 0:
+            return True
+        return version in version_list
+    assert isinstance(version_list, str), "version_list must be list or str"
+    version_list = version_list.strip()
+    if version in version_list:
+        return True
+    if "*" in version_list or "?" in version_list:
+        return fnmatch.fnmatch(version, version_list)
+    version_range = [-sys.maxsize, sys.maxsize]
+    value, prefix = grep_last_number(version)
+    # check prefix
+    if "<" in version_list:
+        a, b = version_list.split("<")
+        if not a.strip().startswith(prefix):
+            return False
+        if not b.strip().startswith(prefix):
+            return False
+    elif not version_list.startswith(prefix):
+        return False
+    try:
+        if "<" in version_list:
+            vlist = version_list.split("<")
+            assert len(vlist) == 2, "Invalid version range"
+            version_range[0], _ = grep_last_number(vlist[0].strip())
+            version_range[1], _ = grep_last_number(vlist[1].strip())
+        else:
+            target_value, _ = grep_last_number(version_list)
+            if version_list.endswith("+"):
+                version_range[0] = target_value
+            elif version_list.endswith("-"):
+                version_range[1] = target_value
+            else:
+                return value == target_value
+    except Exception as e:
+        assert False, f"Invalid version format '{version_list}', error: {e}, can not find right version number"
+    return version_range[0] <= float(value) <= version_range[1]
+
+
+def match_tags(source_tags, target_tags):
+    tmp_normal_tags = []
+    tmp_wildcard_tags = []
+    if not target_tags:
+        return False
+    if not source_tags:
+        return False
+    for t in target_tags:
+        t = t.strip()
+        if "*" in t or "?" in t:
+            tmp_wildcard_tags.append(t)
+        else:
+            tmp_normal_tags.append(t)
+    for t in source_tags:
+        t = t.strip()
+        if t in tmp_normal_tags:
+            return t
+        for wt in tmp_wildcard_tags:
+            if fnmatch.fnmatch(t, wt):
+                return wt
+    return False
+
+
+def skip_process_test_tag_version(tag_list=[], version_list=[], skip_call_back=None, item=None):
+    if callable(skip_call_back):
+        assert item, "Case item must be provided, please dont call this function directly, use @pytest.mark.toffee_tags"
+        return skip_call_back(tag_list, version_list, item)
+    import pytest
+    version =   getattr(pytest, "toffee_current_version", None)
+    skip_tags = getattr(pytest, "toffee_skip_tags", [])
+    run_tags =  getattr(pytest, "toffee_run_tags", [])
+    if not match_veriosn(version, version_list):
+        return True, f"In Skiped versions: '{version}'"
+    tag = match_tags(tag_list, skip_tags)
+    if tag:
+        return True, f"In Skiped tags: '{tag}'"
+    tag = match_tags(tag_list, run_tags)
+    if not tag and len(run_tags) > 0:
+        return True, f"No matched tags"
+    return False, ""
+
+
+def skip_process_test_cases(name, module):
+    import pytest
+    skip_cases = getattr(pytest, "toffee_skip_cases", [])
+    run_cases = getattr(pytest,  "toffee_run_cases", [])
+    c = match_tags([name, module, "%s.%s"%(module, name)], skip_cases)
+    if c:
+        return True, f"In Skiped cases: '{c}'"
+    c = match_tags([name, module, "%s.%s"%(module, name)], run_cases)
+    if not c and len(run_cases) > 0:
+        return True, f"No matched cases"
+    return False, ""
