@@ -5,11 +5,11 @@ import fnmatch
 
 
 def toffee_tags_process(item):
-    '''toffee_tags(tag_list: Optional[list, str],         # eg ["tag1", "tag2"], "tag1"
-                   version_list: Optional[list,str] = [], # eg ["v1", "v2"], "v1+", "v1-", "v1<v2",
-                   skip_call_back=None # is skip_call_back(tag_list, version_list, item): (skip, resion). if skip is true, skip the test
+    '''toffee_tags(tag: Optional[list, str],         # eg: ["tag1", "tag2"], "tag1"
+                   version: Optional[list,str] = [], # eg: ["v1", "v2"], "v1+", "v1-", "v1<v2"
+                   skip=None                         # skip(tag, version, item): (skip, resion)
                    )
-        eg:
+        example:
         @pytest.mark.toffee_tags(["tag1", "tag2"], ["kmh-tag-number1", "kmh-tag-number2"])
         def test_case1(...):
             pass
@@ -19,7 +19,7 @@ def toffee_tags_process(item):
     kwargs = {
         "item": item,
     }
-    need_args = ["tag_list", "version_list", "skip_call_back"]
+    need_args = ["tag", "version", "skip"]
     if marker:
         assert len(marker.args) < len(need_args), "Too many args, only need 3 (tag_list, version_list, skip_call_back)"
         for i, arg in enumerate(marker.args):
@@ -30,7 +30,7 @@ def toffee_tags_process(item):
             kwargs[key] = value        
     else:
         for arg in need_args:
-            kwargs[arg] = getattr(item.module, "toffee_%s"%arg, None)
+            kwargs[arg] = getattr(item.module, "toffee_tags_default_%s"%arg, None)
     skip, reason = skip_process_test_tag_version(**kwargs)
     if skip:
         pytest.skip(reason)
@@ -116,20 +116,22 @@ def match_tags(source_tags, target_tags):
     return False
 
 
-def skip_process_test_tag_version(tag_list=[], version_list=[], skip_call_back=None, item=None):
-    if callable(skip_call_back):
+def skip_process_test_tag_version(tag=[], version=[], skip=None, item=None):
+    if isinstance(tag, str):
+        tag = [tag]
+    if callable(skip):
         assert item, "Case item must be provided, please dont call this function directly, use @pytest.mark.toffee_tags"
-        return skip_call_back(tag_list, version_list, item)
+        return skip(tag, version, item)
     import pytest
-    version =   getattr(pytest, "toffee_current_version", None)
+    current_version = getattr(pytest, "toffee_current_version", None)
     skip_tags = getattr(pytest, "toffee_skip_tags", [])
     run_tags =  getattr(pytest, "toffee_run_tags", [])
-    if not match_veriosn(version, version_list):
-        return True, f"In Skiped versions: '{version}'"
-    tag = match_tags(tag_list, skip_tags)
+    if not match_veriosn(current_version, version):
+        return True, f"In Skiped version, '{current_version}' not match: '{version}'"
+    tag = match_tags(tag, skip_tags)
     if tag:
         return True, f"In Skiped tags: '{tag}'"
-    tag = match_tags(tag_list, run_tags)
+    tag = match_tags(tag, run_tags)
     if not tag and len(run_tags) > 0:
         return True, f"No matched tags"
     return False, ""
