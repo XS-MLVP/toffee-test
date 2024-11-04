@@ -26,7 +26,7 @@
     <div class="container">
       <span class="report-title">{{ title|default('Test Report') }}</span>
       {% if user is defined %}
-      <span style="float: right"><div style="text-align: left;">Name: {{user.name}} <br> Code: {{user.code}}</div> </span>
+      <span style="float: right"><div style="text-align: left;">Name: {{user.name}} <br> Email: {{user.email}}</div> </span>
       {% endif %}
     </div>
     {% endblock %}
