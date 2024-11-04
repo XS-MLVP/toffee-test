@@ -3,11 +3,14 @@ import os
 import uuid
 from collections import Counter
 from datetime import datetime
-
+from filelock import FileLock
 from toffee.funcov import CovGroup
 
 from .utils import convert_line_coverage
 
+
+LOCK_FILE_FUNC_COV = "/tmp/toffee_func_cov.lock"
+LOCK_FILE_LINE_COV = "/tmp/toffee_line_cov.lock"
 
 def get_default_report_name():
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -219,7 +222,21 @@ def process_context(context, config):
                     continue
                 coverage_line_keys.append(key)
                 coverage_line_list.append(lc_data["data"])
-
+    # search data in session
+    if hasattr(context["session"], "__coverage_group__"):
+        for fc_data in context["session"].__coverage_group__:
+            key = "%s-%s" % (fc_data["hash"], fc_data["id"])
+            if key in coverage_func_keys:
+                continue
+            coverage_func_keys.append(key)
+            coverage_func_list.append(fc_data["data"])
+    if hasattr(context["session"], "__line_coverage__"):
+        for lc_data in context["session"].__line_coverage__:
+            key = "%s-%s" % (lc_data["hash"], lc_data["id"])
+            if key in coverage_line_keys:
+                continue
+            coverage_line_keys.append(key)
+            coverage_line_list.append(lc_data["data"])
     context["coverages"] = {
         "line": __update_line_coverage__(coverage_line_list),
         "functional": __update_func_coverage__(coverage_func_list),
@@ -234,11 +251,31 @@ def set_func_coverage(request, g):
             i, CovGroup
         ), "g should be an instance of CovGroup or list of CovGroup"
     request.node.__coverage_group__ = [str(x) for x in g]
+    if request.scope == 'module':
+        with FileLock(LOCK_FILE_FUNC_COV):
+            session = request.session
+            if not hasattr(session, "__coverage_group__"):
+                session.__coverage_group__ = []
+            session.__coverage_group__.extend([{
+                "hash": "%s" % hash(g),
+                "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
+                "data": g,
+            } for g in request.node.__coverage_group__])
 
 
 def set_line_coverage(request, datfile):
     assert isinstance(datfile, str), "datfile should be a string"
     request.node.__line_coverage__ = datfile
+    if request.scope == 'module':
+        with FileLock(LOCK_FILE_LINE_COV):
+            session = request.session
+            if not hasattr(session, "__line_coverage__"):
+                session.__line_coverage__ = []
+            session.__line_coverage__.append({
+                "hash": "%s" % hash(datfile),
+                "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
+                "data": datfile,
+            })
 
 
 def process_func_coverage(item, call, report):
