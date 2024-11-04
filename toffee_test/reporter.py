@@ -33,7 +33,7 @@ def set_output_report(report_path):
     __output_report_dir__ = report_dir
 
 
-def __update_line_coverage__(__line_coverage__=None):
+def __update_line_coverage__(__line_coverage__=None, line_grate=99):
     if __line_coverage__ is None:
         return None
     if len(__line_coverage__) == 0:
@@ -48,7 +48,7 @@ def __update_line_coverage__(__line_coverage__=None):
     return {
         "hints": hint,
         "total": all,
-        "grate": __report_info__.get("line_grate", 90),
+        "grate": __report_info__.get("line_grate", line_grate),
     }
 
 
@@ -183,7 +183,7 @@ def __update_func_coverage__(__func_coverage__):
 
 __report_info__ = {
     "user": None,
-    "title": "XiangShan-BPU UT-Test Report",
+    "title": None,
     "meta": {},
 }
 
@@ -196,6 +196,12 @@ def process_context(context, config):
 
     for k in ["Plugins", "Packages"]:
         context["metadata"].pop(k, None)
+
+    import pytest
+    global_report_info = getattr(pytest, "toffee_report_information", {})
+    set_ctx("user", global_report_info.get("user", {"name":"Tofee", "email":"-"}))
+    set_ctx("title", global_report_info.get("title", "Toffee Test Report"))
+    context["metadata"].update(global_report_info.get("meta", {}))
 
     set_ctx("user", __report_info__["user"])
     set_ctx("title", __report_info__["title"])
@@ -238,7 +244,7 @@ def process_context(context, config):
             coverage_line_keys.append(key)
             coverage_line_list.append(lc_data["data"])
     context["coverages"] = {
-        "line": __update_line_coverage__(coverage_line_list),
+        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99)),
         "functional": __update_func_coverage__(coverage_func_list),
     }
 
