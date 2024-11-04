@@ -7,7 +7,7 @@ import fnmatch
 def toffee_tags_process(item):
     '''toffee_tags(tag: Optional[list, str],         # eg: ["tag1", "tag2"], "tag1"
                    version: Optional[list,str] = [], # eg: ["v1", "v2"], "v1+", "v1-", "v1<v2"
-                   skip=None                         # skip(tag, version, item): (skip, resion)
+                   skip=None                         # skip(tag, version, item): (skip, reason)
                    )
         example:
         @pytest.mark.toffee_tags(["tag1", "tag2"], ["kmh-tag-number1", "kmh-tag-number2"])
