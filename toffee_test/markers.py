@@ -123,9 +123,9 @@ def skip_process_test_tag_version(tag=[], version=[], skip=None, item=None):
         assert item, "Case item must be provided, please dont call this function directly, use @pytest.mark.toffee_tags"
         return skip(tag, version, item)
     import pytest
-    current_version = getattr(pytest, "toffee_current_version", None)
-    skip_tags = getattr(pytest, "toffee_skip_tags", [])
-    run_tags =  getattr(pytest, "toffee_run_tags", [])
+    current_version = getattr(pytest, "toffee_tags_current_version", None)
+    skip_tags = getattr(pytest, "toffee_tags_skip_tags", [])
+    run_tags =  getattr(pytest, "toffee_tags_run_tags", [])
     if not match_veriosn(current_version, version):
         return True, f"In Skiped version, '{current_version}' not match: '{version}'"
     tag = match_tags(tag, skip_tags)
@@ -139,8 +139,8 @@ def skip_process_test_tag_version(tag=[], version=[], skip=None, item=None):
 
 def skip_process_test_cases(name, module):
     import pytest
-    skip_cases = getattr(pytest, "toffee_skip_cases", [])
-    run_cases = getattr(pytest,  "toffee_run_cases", [])
+    skip_cases = getattr(pytest, "toffee_tags_skip_cases", [])
+    run_cases = getattr(pytest,  "toffee_tags_run_cases", [])
     c = match_tags([name, module, "%s.%s"%(module, name)], skip_cases)
     if c:
         return True, f"In Skiped cases: '{c}'"
