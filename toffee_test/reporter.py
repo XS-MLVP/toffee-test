@@ -33,13 +33,13 @@ def set_output_report(report_path):
     __output_report_dir__ = report_dir
 
 
-def __update_line_coverage__(__line_coverage__=None, line_grate=99):
+def __update_line_coverage__(__line_coverage__=None, line_grate=99, ignore_dirs=[]):
     if __line_coverage__ is None:
         return None
     if len(__line_coverage__) == 0:
         return None
     hint, all = convert_line_coverage(
-        __line_coverage__, os.path.join(__output_report_dir__, "line_dat")
+        __line_coverage__, os.path.join(__output_report_dir__, "line_dat"), ignore_dirs
     )
     assert os.path.exists(
         os.path.join(__output_report_dir__, "line_dat/index.html")
@@ -211,6 +211,7 @@ def process_context(context, config):
     coverage_func_keys = []
     coverage_line_list = []
     coverage_line_keys = []
+    coverage_line_igns = []
 
     for t in context["tests"]:
         for p in t["phases"]:
@@ -228,6 +229,13 @@ def process_context(context, config):
                     continue
                 coverage_line_keys.append(key)
                 coverage_line_list.append(lc_data["data"])
+                ignore = lc_data["ignore"]
+                if isinstance(ignore, str):
+                    coverage_line_igns.append(ignore)
+                else:
+                    assert isinstance(ignore, list), "ignore should be a string or list"
+                    coverage_line_igns.extend(ignore)
+
     # search data in session
     if hasattr(context["session"], "__coverage_group__"):
         for fc_data in context["session"].__coverage_group__:
@@ -243,8 +251,15 @@ def process_context(context, config):
                 continue
             coverage_line_keys.append(key)
             coverage_line_list.append(lc_data["data"])
+            ignore = lc_data["ignore"]
+            if isinstance(ignore, str):
+                coverage_line_igns.append(ignore)
+            else:
+                assert isinstance(ignore, list), "ignore should be a string or list"
+                coverage_line_igns.extend(ignore)
+    unique_line_coverage_ignore = list(set(coverage_line_igns))
     context["coverages"] = {
-        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99)),
+        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99), unique_line_coverage_ignore),
         "functional": __update_func_coverage__(coverage_func_list),
     }
 
@@ -269,9 +284,9 @@ def set_func_coverage(request, g):
             } for g in request.node.__coverage_group__])
 
 
-def set_line_coverage(request, datfile):
+def set_line_coverage(request, datfile, ignore=[]):
     assert isinstance(datfile, str), "datfile should be a string"
-    request.node.__line_coverage__ = datfile
+    request.node.__line_coverage__ = json.dumps({"datfile":datfile, "ignore": ignore})
     if request.scope == 'module':
         with FileLock(LOCK_FILE_LINE_COV):
             session = request.session
@@ -281,6 +296,7 @@ def set_line_coverage(request, datfile):
                 "hash": "%s" % hash(datfile),
                 "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
                 "data": datfile,
+                "ignore": ignore,
             })
 
 
@@ -305,10 +321,14 @@ def process_func_coverage(item, call, report):
         assert isinstance(
             item.__line_coverage__, str
         ), "item.__line_coverage__ should be a string"
+        line_data = json.loads(item.__line_coverage__)
+        datfile = line_data["datfile"]
+        ignore = line_data["ignore"]
         report.__line_coverage__ = {
-            "hash": "%s" % hash(item.__line_coverage__),
+            "hash": "%s" % hash(datfile),
             "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
-            "data": item.__line_coverage__,
+            "data": datfile,
+            "ignore": ignore,
         }
     return report
 
