@@ -262,6 +262,14 @@ def process_context(context, config):
         "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99), unique_line_coverage_ignore),
         "functional": __update_func_coverage__(coverage_func_list),
     }
+    if config.option.toffee_report_dump_json:
+        def default(o):
+            try:
+                return str(o)
+            except:
+                return None
+        with open(os.path.join(__output_report_dir__, "toffee_report.json"), "w") as f:
+            json.dump(context, f, indent=4, default=default)
 
 
 def set_func_coverage(request, g):

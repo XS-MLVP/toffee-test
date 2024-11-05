@@ -61,6 +61,10 @@ def pytest_addoption(parser):
         "--report-dir", action="store", default=None, help="The dir of the report."
     )
 
+    group.addoption(
+        "--report-dump-json", action="store_true", default=False, help="Dump json report."
+    )
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
@@ -85,6 +89,10 @@ def pytest_configure(config):
 
         config.option.report = [report_name]
         set_output_report(report_name)
+    if config.getoption("--report-dump-json"):
+        config.option.toffee_report_dump_json = True
+    else:
+        config.option.toffee_report_dump_json = False
 
 
 """
