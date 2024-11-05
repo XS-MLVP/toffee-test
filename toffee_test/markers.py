@@ -47,7 +47,7 @@ def grep_last_number(s: str):
     return None, ""
 
 
-def match_veriosn(version, version_list):
+def match_version(version, version_list):
     if not version:
         return True
     version = version.strip()
@@ -126,7 +126,7 @@ def skip_process_test_tag_version(tag=[], version=[], skip=None, item=None):
     current_version = getattr(pytest, "toffee_tags_current_version", None)
     skip_tags = getattr(pytest, "toffee_tags_skip_tags", [])
     run_tags =  getattr(pytest, "toffee_tags_run_tags", [])
-    if not match_veriosn(current_version, version):
+    if not match_version(current_version, version):
         return True, f"In Skiped version, '{current_version}' not match: '{version}'"
     tag = match_tags(tag, skip_tags)
     if tag:
