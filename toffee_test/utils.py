@@ -1,7 +1,7 @@
 import os
 import re
 import subprocess
-
+import copy
 
 def exe_cmd(cmd):
     if isinstance(cmd, list):
@@ -28,6 +28,7 @@ def parse_lines(text: str):
 def convert_line_coverage(line_coverage_list, output_dir):
     assert isinstance(line_coverage_list, list), "Invalid line coverage list"
     coverage_info_list = []
+    final_ignore_info = []
     for ldata in line_coverage_list:
         fdat = ldata["data"]
         fign = ldata["ignore"]
@@ -62,6 +63,7 @@ def convert_line_coverage(line_coverage_list, output_dir):
                 )
         assert su, f"Failed to remove line with file: '{ignore_file}'"
         coverage_info_list.append("'%s'" % fdat+".info")
+        final_ignore_info.append([fdat, copy.deepcopy(ignore_file_list)])
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     merged_info = os.path.join(output_dir, "merged.info")
@@ -72,4 +74,4 @@ def convert_line_coverage(line_coverage_list, output_dir):
     assert su, f"Failed to merge line coverage: {se}"
     su, so, se = exe_cmd(["genhtml", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
-    return parse_lines(so)
+    return parse_lines(so), final_ignore_info

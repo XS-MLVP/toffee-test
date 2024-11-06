@@ -38,7 +38,7 @@ def __update_line_coverage__(line_coverage_list=[], line_grate=99):
         return None
     if len(line_coverage_list) == 0:
         return None
-    hint, all = convert_line_coverage(
+    (hint, all), ignore = convert_line_coverage(
         line_coverage_list, os.path.join(__output_report_dir__, "line_dat")
     )
     assert os.path.exists(
@@ -49,6 +49,7 @@ def __update_line_coverage__(line_coverage_list=[], line_grate=99):
         "hints": hint,
         "total": all,
         "grate": __report_info__.get("line_grate", line_grate),
+        "ignore": ignore
     }
 
 
