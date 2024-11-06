@@ -33,13 +33,13 @@ def set_output_report(report_path):
     __output_report_dir__ = report_dir
 
 
-def __update_line_coverage__(__line_coverage__=None, line_grate=99, ignore_dirs=[]):
-    if __line_coverage__ is None:
+def __update_line_coverage__(line_coverage_list=[], line_grate=99):
+    if line_coverage_list is None:
         return None
-    if len(__line_coverage__) == 0:
+    if len(line_coverage_list) == 0:
         return None
     hint, all = convert_line_coverage(
-        __line_coverage__, os.path.join(__output_report_dir__, "line_dat"), ignore_dirs
+        line_coverage_list, os.path.join(__output_report_dir__, "line_dat")
     )
     assert os.path.exists(
         os.path.join(__output_report_dir__, "line_dat/index.html")
@@ -211,7 +211,6 @@ def process_context(context, config):
     coverage_func_keys = []
     coverage_line_list = []
     coverage_line_keys = []
-    coverage_line_igns = []
 
     for t in context["tests"]:
         for p in t["phases"]:
@@ -228,14 +227,7 @@ def process_context(context, config):
                 if key in coverage_line_keys:
                     continue
                 coverage_line_keys.append(key)
-                coverage_line_list.append(lc_data["data"])
-                ignore = lc_data["ignore"]
-                if isinstance(ignore, str):
-                    coverage_line_igns.append(ignore)
-                else:
-                    assert isinstance(ignore, list), "ignore should be a string or list"
-                    coverage_line_igns.extend(ignore)
-
+                coverage_line_list.append(lc_data)
     # search data in session
     if hasattr(context["session"], "__coverage_group__"):
         for fc_data in context["session"].__coverage_group__:
@@ -250,16 +242,9 @@ def process_context(context, config):
             if key in coverage_line_keys:
                 continue
             coverage_line_keys.append(key)
-            coverage_line_list.append(lc_data["data"])
-            ignore = lc_data["ignore"]
-            if isinstance(ignore, str):
-                coverage_line_igns.append(ignore)
-            else:
-                assert isinstance(ignore, list), "ignore should be a string or list"
-                coverage_line_igns.extend(ignore)
-    unique_line_coverage_ignore = list(set(coverage_line_igns))
+            coverage_line_list.append(lc_data)
     context["coverages"] = {
-        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99), unique_line_coverage_ignore),
+        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99)),
         "functional": __update_func_coverage__(coverage_func_list),
     }
     if config.option.toffee_report_dump_json:

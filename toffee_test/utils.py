@@ -25,32 +25,31 @@ def parse_lines(text: str):
     return -1, -1
 
 
-def convert_line_coverage(dat_file, output_dir, ignore_dirs=[]):
-    if isinstance(dat_file, list):
-        for f in dat_file:
-            assert os.path.exists(f), f"File not found: {f}"
-        dat_file = " ".join(dat_file)
-    else:
-        assert os.path.exists(dat_file), f"File not found: {dat_file}"
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    merged_info = os.path.join(output_dir, "merged.info")
-    su, so, se = exe_cmd(["verilator_coverage  -write-info", merged_info, dat_file])
-    assert su, f"Failed to convert line coverage: {se}"
-    for ignore in ignore_dirs:
-        if not os.path.exists(ignore):
-            continue
+def convert_line_coverage(line_coverage_list, output_dir):
+    assert isinstance(line_coverage_list, list), "Invalid line coverage list"
+    coverage_info_list = []
+    for ldata in line_coverage_list:
+        fdat = ldata["data"]
+        fign = ldata["ignore"]
+        if isinstance(fign, str):
+            fign = [fign]
+        assert isinstance(fign, list), f"Invalid data file: '{fign}'"
+        assert os.path.exists(fdat), f"Invalid data file: '{fdat}'"
+        su, so, se = exe_cmd(["verilator_coverage  -write-info", fdat+".info", fdat])
+        assert su, f"Failed to convert line coverage({fdat}): {se}"
+        ignore_text = []
+        # find all .ignore files
         ignore_file_list = []
-        if os.path.isfile(ignore):
-            ignore_file_list.append(ignore)
-        elif os.path.isdir(ignore):
-            for root, _, files in os.walk(ignore):
-                for f in files:
-                    if f.endswith(".ignore"):
-                        ignore_file_list.append(os.path.join(root, f))
+        for f in fign:
+            if os.path.isdir(f):
+                for root, _, files in os.walk(f):
+                    for file in files:
+                        if file.endswith(".ignore"):
+                            ignore_file_list.append(os.path.join(root, file))
+            else:
+                assert os.path.exists(f), f"Not find ignore file: '{f}'"
+                ignore_file_list.append(f)
         for ignore_file in ignore_file_list:
-            ignore_text = []
             for i, ln in enumerate(open(ignore_file).readlines()):
                 ln = ln.strip()
                 if ln.startswith("#"):
@@ -58,10 +57,19 @@ def convert_line_coverage(dat_file, output_dir, ignore_dirs=[]):
                 for c in ["'", "\""]:
                     assert c not in ln, f"Invalid line number({i}): '{ln}'"
                 ignore_text.append(f"\'{ln}\'")
-            su, so, se = exe_cmd(
-                    ["lcov", "--remove", merged_info, " ".join(ignore_text), "--output-file", merged_info]
+        su, so, se = exe_cmd(
+                    ["lcov", "--remove", fdat+".info", " ".join(ignore_text), "--output-file", fdat+".info"]
                 )
-            assert su, f"Failed to remove line with file: '{ignore_file}'"
+        assert su, f"Failed to remove line with file: '{ignore_file}'"
+        coverage_info_list.append("'%s'" % fdat+".info")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    merged_info = os.path.join(output_dir, "merged.info")
+    merged_args = []
+    for c in coverage_info_list:
+        merged_args.extend(["-a", c])
+    su, so, se = exe_cmd(["lcov", *merged_args, "--output-file", merged_info])
+    assert su, f"Failed to merge line coverage: {se}"
     su, so, se = exe_cmd(["genhtml", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
     return parse_lines(so)
