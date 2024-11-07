@@ -61,7 +61,7 @@ def convert_line_coverage(line_coverage_list, output_dir):
         su, so, se = exe_cmd(
                     ["lcov", "--remove", fdat+".info", " ".join(ignore_text), "--output-file", fdat+".info"]
                 )
-        assert su, f"Failed to remove line with file: '{ignore_file}'"
+        assert su, f"Failed to remove line with file: '{ignore_file_list}', exception: {se}"
         coverage_info_list.append("'%s'" % fdat+".info")
         final_ignore_info.append([fdat, copy.deepcopy(ignore_file_list)])
     if not os.path.exists(output_dir):
