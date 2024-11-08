@@ -101,7 +101,7 @@ def __update_func_coverage__(__func_coverage__):
                         if key == "bins":
                             assert Counter([x["name"] for x in value]) == Counter(
                                 x["name"] for x in result[key]
-                            ), f"bins in points {dict1['name']} should be same"
+                            ), f"bins in points {dict1['name']} should be same, merge function coverage: {dict1['name']} failed"
                         old_keys = {a["name"]: i for i, a in enumerate(result[key])}
                         for data in value:
                             if data["name"] not in old_keys:
