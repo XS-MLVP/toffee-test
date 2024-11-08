@@ -72,6 +72,6 @@ def convert_line_coverage(line_coverage_list, output_dir):
         merged_args.extend(["-a", c])
     su, so, se = exe_cmd(["lcov", *merged_args, "--output-file", merged_info])
     assert su, f"Failed to merge line coverage: {se}"
-    su, so, se = exe_cmd(["genhtml", merged_info, "-o", output_dir])
+    su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
     return parse_lines(so), final_ignore_info
