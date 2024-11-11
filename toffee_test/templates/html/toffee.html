@@ -78,7 +78,8 @@ document.addEventListener("DOMContentLoaded", function() {
               break;
             }
           }
-        }else if(thirdTag.length > 0){
+        }
+        if(thirdTag.length > 0 && !needRemove){
           needRemove = true;
           const thirdElements = elements[j].getElementsByTagName(thirdTag);
           for (let k = thirdElements.length - 1; k >= 0; k--) {
