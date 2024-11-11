@@ -101,6 +101,12 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById('td_filter_string').innerHTML = filterString;
     document.getElementById('td_filter_string').style.color = '#ff00ff';
   }
+  var openFuc = urlParams.getAll('ShowFunCov');
+  if(openFuc.length > 0){
+    if(openFuc[0] == "1" || openFuc[0] == "true"){
+      openFunctionalDetailModal();
+    }
+  }
 });
 
 {% endblock %}
@@ -150,16 +156,16 @@ document.addEventListener("DOMContentLoaded", function() {
     </div>
     <ul style="height: 66.67vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-right:10px">
       {% for group in coverages.functional.groups %}
-      <li>Group: {{group.name}} {% if group.hinted %}<span style="float: right; color: green;">Passed</span>{% else %}<span style="float: right; color: red;">Failed</span> {% endif %}</li>
-        <ul>
+      <li class="{{group.name}}">Group: {{group.name}} {% if group.hinted %}<span style="float: right; color: green;">Passed</span>{% else %}<span style="float: right; color: red;">Failed</span> {% endif %}</li>
+        <ul class="{{group.name}}">
         {% for point in group.points %}
-          <li>{% if point.once %}
+          <li class="{{group.name}}_point_{%if point.hinted%}pass{% else %}fail{% endif %}">{% if point.once %}
               <span style="color: brown; font-weight: bold;">*</span>
               {% endif %}
             Point: {{point.name}} {% if point.hinted %}<span style="float: right; color: green;">Passed</span>{% else %}<span style="float: right; color: red;">Failed</span> {% endif %}</li>
-          <ul>
+          <ul class="{{group.name}}_point_{%if point.hinted%}pass{% else %}fail{% endif %}">
           {% for bin in point.bins %}
-            <li>Bin: {{bin.name}} {% if total_b != 0 %}
+            <li class="{{group.name}}_bin_{%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
                 {% if bin.hinted != 0 %}
                   <span style="float: right; color: green;">{{bin.hints}}</span>
                 {% else %}
