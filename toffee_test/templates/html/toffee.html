@@ -83,7 +83,7 @@ document.addEventListener("DOMContentLoaded", function() {
           needRemove = true;
           const thirdElements = elements[j].getElementsByTagName(thirdTag);
           for (let k = thirdElements.length - 1; k >= 0; k--) {
-            if (thirdElements[k].innerHTML.includes(targetStr)) {
+            if (thirdElements[k].outerHTML.includes(targetStr)) {
               needRemove = false;
               break;
             }
@@ -156,16 +156,21 @@ document.addEventListener("DOMContentLoaded", function() {
     </div>
     <ul style="height: 66.67vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-right:10px">
       {% for group in coverages.functional.groups %}
-      <li class="{{group.name}}">Group: {{group.name}} {% if group.hinted %}<span style="float: right; color: green;">Passed</span>{% else %}<span style="float: right; color: red;">Failed</span> {% endif %}</li>
-        <ul class="{{group.name}}">
+      <li class="group_name">Group: {{group.name}} {% if group.hinted %}<span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
+                                                                        <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}
+      </li>
+        <ul class="group_name">
         {% for point in group.points %}
-          <li class="{{group.name}}_point_{%if point.hinted%}pass{% else %}fail{% endif %}">{% if point.once %}
+          <li class="point_name">
+              {% if point.once %}
               <span style="color: brown; font-weight: bold;">*</span>
               {% endif %}
-            Point: {{point.name}} {% if point.hinted %}<span style="float: right; color: green;">Passed</span>{% else %}<span style="float: right; color: red;">Failed</span> {% endif %}</li>
-          <ul class="{{group.name}}_point_{%if point.hinted%}pass{% else %}fail{% endif %}">
+            Point: {{point.name}} {% if point.hinted %}
+              <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
+              <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}</li>
+          <ul class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
           {% for bin in point.bins %}
-            <li class="{{group.name}}_bin_{%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
+            <li class="bin_name {%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
                 {% if bin.hinted != 0 %}
                   <span style="float: right; color: green;">{{bin.hints}}</span>
                 {% else %}
