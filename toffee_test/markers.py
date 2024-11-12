@@ -2,6 +2,7 @@
 import sys
 import re
 import fnmatch
+from .utils import get_toffee_custom_key_value
 
 
 def toffee_tags_process(item):
@@ -122,10 +123,9 @@ def skip_process_test_tag_version(tag=[], version=[], skip=None, item=None):
     if callable(skip):
         assert item, "Case item must be provided, please dont call this function directly, use @pytest.mark.toffee_tags"
         return skip(tag, version, item)
-    import pytest
-    current_version = getattr(pytest, "toffee_tags_current_version", None)
-    skip_tags = getattr(pytest, "toffee_tags_skip_tags", [])
-    run_tags =  getattr(pytest, "toffee_tags_run_tags", [])
+    current_version = get_toffee_custom_key_value().get("toffee_tags_current_version", None)
+    skip_tags = get_toffee_custom_key_value().get("toffee_tags_skip_tags", [])
+    run_tags =  get_toffee_custom_key_value().get("toffee_tags_run_tags", [])
     if not match_version(current_version, version):
         return True, f"In Skiped version, '{current_version}' not match: '{version}'"
     tag = match_tags(tag, skip_tags)
@@ -136,11 +136,9 @@ def skip_process_test_tag_version(tag=[], version=[], skip=None, item=None):
         return True, f"No matched tags"
     return False, ""
 
-
 def skip_process_test_cases(name, module):
-    import pytest
-    skip_cases = getattr(pytest, "toffee_tags_skip_cases", [])
-    run_cases = getattr(pytest,  "toffee_tags_run_cases", [])
+    skip_cases = get_toffee_custom_key_value().get("toffee_tags_skip_cases", [])
+    run_cases = get_toffee_custom_key_value().get("toffee_tags_run_cases", [])
     c = match_tags([name, module, "%s.%s"%(module, name)], skip_cases)
     if c:
         return True, f"In Skiped cases: '{c}'"

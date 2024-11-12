@@ -6,7 +6,7 @@ from datetime import datetime
 from filelock import FileLock
 from toffee.funcov import CovGroup
 
-from .utils import convert_line_coverage
+from .utils import convert_line_coverage, get_toffee_custom_key_value
 
 
 LOCK_FILE_FUNC_COV = "/tmp/toffee_func_cov.lock"
@@ -198,8 +198,7 @@ def process_context(context, config):
     for k in ["Plugins", "Packages"]:
         context["metadata"].pop(k, None)
 
-    import pytest
-    global_report_info = getattr(pytest, "toffee_report_information", {})
+    global_report_info = get_toffee_custom_key_value().get("toffee_report_information", {})
     set_ctx("user", global_report_info.get("user", {"name":"Tofee", "email":"-"}))
     set_ctx("title", global_report_info.get("title", "Toffee Test Report"))
     context["metadata"].update(global_report_info.get("meta", {}))

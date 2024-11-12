@@ -8,5 +8,6 @@ except ImportError:
 
 from toffee_test.testcase import testcase, fixture
 from toffee_test.request import ToffeeRequest, PreRequest
+from toffee_test.utils import base64_decode, base64_encode
 
-__all__ = ["testcase", "fixture", "ToffeeRequest", "PreRequest"]
+__all__ = ["testcase", "fixture", "ToffeeRequest", "PreRequest", "base64_decode", "base64_encode"]

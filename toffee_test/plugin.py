@@ -11,6 +11,8 @@ from .reporter import process_context
 from .reporter import process_func_coverage
 from .reporter import set_output_report
 from .markers import toffee_tags_process
+from .utils import base64_decode, get_toffee_custom_key_value, set_toffee_custom_key_value
+
 
 """
 toffee plugin
@@ -27,7 +29,7 @@ def pytest_runtest_call(item):
     call = yield
     if call.excinfo is not None:
         eclass, evalue, _ = call.excinfo
-        ignore_exceptions = getattr(pytest, "toffee_ignore_exceptions", [])
+        ignore_exceptions = get_toffee_custom_key_value().get("toffee_ignore_exceptions", [])
         if eclass.__name__ in ignore_exceptions:
             call.force_exception(pytest.skip.Exception(
                     "Skiped exception: '%s(%s)'" % (eclass.__name__, evalue)))
@@ -65,6 +67,10 @@ def pytest_addoption(parser):
         "--report-dump-json", action="store_true", default=False, help="Dump json report."
     )
 
+    group.addoption(
+        "--custom-key-value", action="store", default=None, help="Custom key value pair. dict wtih base64 encoded"
+    )
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
@@ -93,6 +99,10 @@ def pytest_configure(config):
         config.option.toffee_report_dump_json = True
     else:
         config.option.toffee_report_dump_json = False
+    # Custom key value pair
+    ckv = config.getoption("--custom-key-value")
+    if ckv:
+        set_toffee_custom_key_value(base64_decode(ckv))
 
 
 """
