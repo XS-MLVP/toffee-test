@@ -100,4 +100,5 @@ def get_toffee_custom_key_value():
 
 def set_toffee_custom_key_value(value):
     import pytest
+    assert isinstance(value, dict), "Invalid custom key value"
     pytest.toffee_custom_key_value = value
