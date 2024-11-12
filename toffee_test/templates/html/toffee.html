@@ -171,7 +171,7 @@ document.addEventListener("DOMContentLoaded", function() {
           <ul class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
           {% for bin in point.bins %}
             <li class="bin_name {%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
-                {% if bin.hinted != 0 %}
+                {% if bin.hints != 0 %}
                   <span style="float: right; color: green;">{{bin.hints}}</span>
                 {% else %}
                   <span style="float: right; color: red;">{{bin.hints}}</span>
