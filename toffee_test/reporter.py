@@ -71,6 +71,7 @@ def __update_func_coverage__(__func_coverage__):
                                                                 |                        |-   name:   str
                                                                 |- hinted:   boolean
                                                                 |- name:     str
+                                                                |- functions:list[str]
                                         |- name:     str
                                         |- hinted:   boolean
                                         |- bin_num_total:  int
@@ -110,6 +111,13 @@ def __update_func_coverage__(__func_coverage__):
                                 result[key][old_keys[data["name"]]] = merge_dicts(
                                     result[key][old_keys[data["name"]]], data
                                 )
+                    elif key == "functions":
+                        for k, v in value.items():
+                            if k in result[key]:
+                                result[key][k] = list(set(result[key][k] + v))
+                            else:
+                                result[key][k] = v
+                        result[key] = list(set(result[key] + value))
                 elif isinstance(result[key], bool) and isinstance(value, bool):
                     if key == "has_once":
                         result[key] = result[key] and value
@@ -148,6 +156,7 @@ def __update_func_coverage__(__func_coverage__):
         # Point Hinted
         data["point_num_total"] = len(data["points"])
         data["point_num_hints"] = 0
+        data["point_functions"] = []
         data["bin_num_total"] = 0
         data["bin_num_hints"] = 0
 
@@ -161,6 +170,8 @@ def __update_func_coverage__(__func_coverage__):
 
             data["point_num_hints"] += tmp_bin_hints == len(point["bins"])
             data["hinted"] &= tmp_bin_hints == len(point["bins"])
+            data["point_functions"].extend([item for funcs in point["functions"].items() for item in funcs[1]])
+        data["point_functions"] = list(set(data["point_functions"]))
 
         # Group Hinted
         if data["hinted"]:
