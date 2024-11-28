@@ -148,39 +148,40 @@ def __update_func_coverage__(__func_coverage__):
     coverage["groups"] = merge_dicts_list([parse_group(g) for g in __func_coverage__])
 
     # Recalculate the groups hinted situation
-    for data in coverage["groups"]:
+    for group in coverage["groups"]:
         group_num_total += 1
 
-        data["hinted"] = 1
+        group["hinted"] = True
 
         # Point Hinted
-        data["point_num_total"] = len(data["points"])
-        data["point_num_hints"] = 0
-        data["point_functions"] = []
-        data["bin_num_total"] = 0
-        data["bin_num_hints"] = 0
+        group["point_num_total"] = len(group["points"])
+        group["point_num_hints"] = 0
+        group["point_functions"] = []
+        group["bin_num_total"] = 0
+        group["bin_num_hints"] = 0
 
-        for point in data["points"]:
+        for point in group["points"]:
             # Bins Hinted
-            data["bin_num_total"] += len(point["bins"])
+            group["bin_num_total"] += len(point["bins"])
             tmp_bin_hints = 0
             for bin in point["bins"]:
-                data["bin_num_hints"] += bin["hints"] > 0
-                tmp_bin_hints += bin["hints"] > 0
+                group["bin_num_hints"] += int(bin["hints"] > 0)
+                tmp_bin_hints += int(bin["hints"] > 0)
+            point["hinted"] = tmp_bin_hints == len(point["bins"])
 
-            data["point_num_hints"] += tmp_bin_hints == len(point["bins"])
-            data["hinted"] &= tmp_bin_hints == len(point["bins"])
-            data["point_functions"].extend([item for funcs in point["functions"].items() for item in funcs[1]])
-        data["point_functions"] = list(set(data["point_functions"]))
+            group["point_num_hints"] += int(point["hinted"])
+            group["hinted"] &= point["hinted"]
+            group["point_functions"].extend([item for funcs in point["functions"].items() for item in funcs[1]])
+        group["point_functions"] = list(set(group["point_functions"]))
 
         # Group Hinted
-        if data["hinted"]:
+        if group["hinted"]:
             group_num_hints += 1
 
-        point_num_hints += data["point_num_hints"]
-        point_num_total += data["point_num_total"]
-        bin_num_hints += data["bin_num_hints"]
-        bin_num_total += data["bin_num_total"]
+        point_num_hints += group["point_num_hints"]
+        point_num_total += group["point_num_total"]
+        bin_num_hints += group["bin_num_hints"]
+        bin_num_total += group["bin_num_total"]
 
     coverage["group_num_total"] = group_num_total
     coverage["group_num_hints"] = group_num_hints
