@@ -99,10 +99,10 @@ def __update_func_coverage__(__func_coverage__):
                     result[key] = merge_dicts(result[key], value)
                 elif isinstance(result[key], list) and isinstance(value, list):
                     if key == "points" or key == "bins":
-                        if key == "bins":
+                        if key == "bins" and result.get("dynamic_bin", False) == False:
                             assert Counter([x["name"] for x in value]) == Counter(
                                 x["name"] for x in result[key]
-                            ), f"bins in points {dict1['name']} should be same, merge function coverage: {dict1['name']} failed"
+                            ), f"bins in points {dict1['name']} should be same, merge function coverage: {dict1['name']} failed (when add_watch_point, use dynamic_bin=True to ignore this error)"
                         old_keys = {a["name"]: i for i, a in enumerate(result[key])}
                         for data in value:
                             if data["name"] not in old_keys:
