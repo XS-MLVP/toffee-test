@@ -65,19 +65,56 @@ def convert_line_coverage(line_coverage_list, output_dir):
                     ["lcov", "--remove", fdat+".info", " ".join(ignore_text), "--output-file", fdat+".info"]
                 )
         assert su, f"Failed to remove line with file: '{ignore_file_list}', exception: {se}"
-        coverage_info_list.append("'%s'" % fdat+".info")
+        coverage_info_list.append(fdat+".info")
         final_ignore_info.append([fdat, copy.deepcopy(ignore_file_list)])
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     merged_info = os.path.join(output_dir, "merged.info")
-    merged_args = []
-    for c in coverage_info_list:
-        merged_args.extend(["-a", c])
-    su, so, se = exe_cmd(["lcov", *merged_args, "--output-file", merged_info])
-    assert su, f"Failed to merge line coverage: {se}"
+    lcov_merge_and_del(coverage_info_list, merged_info)
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
     return parse_lines(so), final_ignore_info
+
+
+def lcov_merge_and_del(list_to_merge, out_file, max_kbytes = 10, deepth = 0):
+    import time
+    stamp = "/tmp/%s_MINFO_%s_" % (deepth, time.time()) + "%s.tmpinfo"
+    batch_input, merged_input = [], []
+    total_size = 0
+    batch_index = 0
+    for f in list_to_merge:
+        assert os.path.exists(f), f"Invalid file: '{f}'"
+        if total_size + len(f) > max_kbytes * 1024 and len(batch_input) > 1:
+            _lcov_del_merge(batch_input, stamp % batch_index)
+            total_size = 0
+            for f_del in batch_input:
+                os.remove(f_del)
+            batch_input = []
+            batch_index += 1
+            merged_input.append(stamp % batch_index)
+            continue
+        batch_input.append(f)
+        total_size += len(f)
+    if len(batch_input) > 0:
+        if len(merged_input) < 1:
+            _lcov_del_merge(batch_input, out_file)
+            return
+        else:
+            _lcov_del_merge(batch_input, stamp % batch_index)
+            merged_input.append(stamp % batch_index)
+    return lcov_merge_and_del(merged_input, out_file, max_kbytes, deepth + 1)
+
+
+def _lcov_del_merge(list_to_merge, out_file):
+    if len(list_to_merge) == 1:
+        os.rename(list_to_merge[0], out_file)
+        return
+    if len(list_to_merge) == 0:
+        return
+    su, so, se = exe_cmd(["lcov", *["-a %s" % f for f in list_to_merge], "-o", out_file])
+    assert su, f"Failed to merge line coverage: {se}"
+    for f in list_to_merge:
+        os.remove(f)
 
 
 def base64_encode(data):
