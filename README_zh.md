@@ -32,7 +32,7 @@ pip install toffee-test@git+https://github.com/XS-MLVP/toffee-test@master
 ```bash
 git clone https://github.com/XS-MLVP/toffee-test.git
 cd toffee-test
-pip3 install .
+pip install .
 ```
 
 ## 使用

@@ -1,3 +1,4 @@
+import asyncio
 import functools
 
 import pytest
@@ -13,6 +14,8 @@ def testcase(func):
     @functools.wraps(func)
     @pytest.mark.asyncio
     async def wrapper(*args, **kwargs):
-        return await toffee.asynchronous.main_coro(func(*args, **kwargs))
+        ret = await toffee.asynchronous.main_coro(func(*args, **kwargs))
+        asyncio.get_event_loop().stop()
+        return ret
 
     return wrapper
