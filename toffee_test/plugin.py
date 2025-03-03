@@ -5,13 +5,15 @@ import pytest
 import toffee
 from toffee import run
 
+from .markers import toffee_tags_process
 from .reporter import get_default_report_name
 from .reporter import get_template_dir
 from .reporter import process_context
 from .reporter import process_func_coverage
 from .reporter import set_output_report
-from .markers import toffee_tags_process
-from .utils import base64_decode, get_toffee_custom_key_value, set_toffee_custom_key_value
+from .utils import base64_decode
+from .utils import get_toffee_custom_key_value
+from .utils import set_toffee_custom_key_value
 
 
 """
@@ -29,10 +31,16 @@ def pytest_runtest_call(item):
     call = yield
     if call.excinfo is not None:
         eclass, evalue, _ = call.excinfo
-        ignore_exceptions = get_toffee_custom_key_value().get("toffee_ignore_exceptions", [])
+        ignore_exceptions = get_toffee_custom_key_value().get(
+            "toffee_ignore_exceptions", []
+        )
         if eclass.__name__ in ignore_exceptions:
-            call.force_exception(pytest.skip.Exception(
-                    "Skiped exception: '%s(%s)'" % (eclass.__name__, evalue)))
+            call.force_exception(
+                pytest.skip.Exception(
+                    "Skiped exception: '%s(%s)'" % (eclass.__name__, evalue)
+                )
+            )
+
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
@@ -64,11 +72,17 @@ def pytest_addoption(parser):
     )
 
     group.addoption(
-        "--report-dump-json", action="store_true", default=False, help="Dump json report."
+        "--report-dump-json",
+        action="store_true",
+        default=False,
+        help="Dump json report.",
     )
 
     group.addoption(
-        "--custom-key-value", action="store", default=None, help="Custom key value pair. dict wtih base64 encoded"
+        "--custom-key-value",
+        action="store",
+        default=None,
+        help="Custom key value pair. dict wtih base64 encoded",
     )
 
 
@@ -77,9 +91,7 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "mlvp_async: mark test to run with toffee's event loop"
     )
-    config.addinivalue_line(
-        "markers", toffee_tags_process.__doc__
-    )
+    config.addinivalue_line("markers", toffee_tags_process.__doc__)
     if config.getoption("--toffee-report"):
         config.option.template = ["html/toffee.html"]
         config.option.template_dir = [get_template_dir()]
@@ -103,6 +115,9 @@ def pytest_configure(config):
     ckv = config.getoption("--custom-key-value")
     if ckv:
         set_toffee_custom_key_value(base64_decode(ckv))
+
+    if "asyncio_default_fixture_loop_scope" not in config._inicache:
+        config._inicache["asyncio_default_fixture_loop_scope"] = "function"
 
 
 """
