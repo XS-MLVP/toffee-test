@@ -40,7 +40,12 @@ class ToffeeRequest:
         return self.request.config.getoption("--toffee-report")
 
     def create_dut(
-        self, dut_cls, clock_name=None, waveform_filename=None, coverage_filename=None
+        self,
+        dut_cls,
+        clock_name=None,
+        waveform_filename=None,
+        coverage_filename=None,
+        dut_extra_kwargs={},
     ):
         """
         Create the DUT.
@@ -50,6 +55,7 @@ class ToffeeRequest:
             clock_name: The clock pin name.
             waveform_filename: The waveform filename. if not set, it will be set to default.
             coverage_filename: The coverage filename. if not set, it will be set to default.
+            dut_extra_kwargs: The extra kwargs for the DUT. eg. {"arg1": 1, "arg2": 2}
 
         Returns:
             The DUT instance.
@@ -73,12 +79,17 @@ class ToffeeRequest:
             self.dut = dut_cls(
                 waveform_filename=self.waveform_filename,
                 coverage_filename=self.coverage_filename,
+                **dut_extra_kwargs,
             )
 
             if self.cov_groups is not None:
                 self.__add_cov_sample(self.cov_groups)
         else:
-            self.dut = dut_cls()
+            self.dut = dut_cls(
+                waveform_filename=waveform_filename,
+                coverage_filename=coverage_filename,
+                **dut_extra_kwargs,
+            )
 
         if clock_name:
             self.dut.InitClock(clock_name)
