@@ -24,6 +24,7 @@ dependencies = [
     'pytest-reporter-html1>=0.8.4',
     'pytest-xdist>=3.5.0',
     'pytest-asyncio>=0.23.0',
+    "filelock>=3.16.1",
 ]
 dynamic = ["version"]
 
