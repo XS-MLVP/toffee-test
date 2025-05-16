@@ -15,37 +15,37 @@
           <th>Ended</th>
           <td>
             {% if ended %}
-              {{ ended|strftime(time_format) }}
+            {{ ended|strftime(time_format) }}
             {% else %}
-              <i>In progress...</i>
+            <i>In progress...</i>
             {% endif %}
           </td>
         </tr>
         {% if ended %}
-          <tr>
-            <th>Duration</th>
-            {% set duration = ended - started %}
-            <td>{{ duration|timedelta }}</td>
-          </tr>
+        <tr>
+          <th>Duration</th>
+          {% set duration = ended - started %}
+          <td>{{ duration|timedelta }}</td>
+        </tr>
         {% endif %}
         <tr>
           <th>Total run time</th>
           <td>{{ tests|map(attribute='phases')|map('sum', 'report.duration')|sum|timedelta }}</td>
         </tr>
         {% for key, value in metadata.items() %}
-          <tr>
-            <th>{{ key }}</th>
-            <td>
-              {% if value is mapping %}
-                {% for key, value in value.items() %}
-                  {{ key }}: {{ value }}<br>
-                {% endfor %}
-              {% else %}
-                {{ value|urlize }}
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
+        <tr>
+          <th>{{ key }}</th>
+          <td>
+            {% if value is mapping %}
+            {% for key, value in value.items() %}
+            {{ key }}: {{ value }}<br>
+            {% endfor %}
+            {% else %}
+            {{ value|urlize }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
         {% endblock %}
         <tr id="tr_filter_string" style="display: none;">
           <th>Filter String</th>
@@ -64,36 +64,36 @@
         {% set spacing = 0.4 %}
         {% set C = 2 * 3.141592653589793 * r %}
         {% for category, sub_tests in tests_by_category %}
-          {% set count = sub_tests|count %}
-          {% set L = count / (total + nof_nodes_not_run) * C %}
-          {% set color = colors[category] %}
-          <circle
-            class="donut-segment {{ category }}"
-            stroke-dasharray="{{ [L - spacing, 0]|max }} {{ C - (L - spacing) }}"
-            stroke-dashoffset="{{ C - ns.sum + C / 4 - spacing / 2 }}"
-            cx="21"
-            cy="21"
-            r="{{ r }}"
-            fill="transparent"
-            {% if color %}
-            stroke="{{ color[0] }}"
-            {% endif %}
-            stroke-width="4">
-          </circle>
-          {% set ns.sum = ns.sum + L %}
+        {% set count = sub_tests|count %}
+        {% set L = count / (total + nof_nodes_not_run) * C %}
+        {% set color = colors[category] %}
+        <circle
+                class="donut-segment {{ category }}"
+                stroke-dasharray="{{ [L - spacing, 0]|max }} {{ C - (L - spacing) }}"
+                stroke-dashoffset="{{ C - ns.sum + C / 4 - spacing / 2 }}"
+                cx="21"
+                cy="21"
+                r="{{ r }}"
+                fill="transparent"
+                {% if color %}
+                stroke="{{ color[0] }}"
+                {% endif %}
+                stroke-width="4">
+        </circle>
+        {% set ns.sum = ns.sum + L %}
         {% endfor %}
         <text x="21" y="24" text-anchor="middle">{{ total }}</text>
       </svg>
       <div class="legend">
         {% for category, tests in tests_by_category %}
-          <span class="status badge {{ category }} {{ tests|map(attribute='status.style')|first|join(' ') }}">
+        <span class="status badge {{ category }} {{ tests|map(attribute='status.style')|first|join(' ') }}">
             {{ tests|count }}
           </span>
-          <span>{{ category }}</span>
+        <span>{{ category }}</span>
         {% endfor %}
         {% if nof_nodes_not_run %}
-          <span class="status badge notrun">{{ nof_nodes_not_run }}</span>
-          <span>not run</span>
+        <span class="status badge notrun">{{ nof_nodes_not_run }}</span>
+        <span>not run</span>
         {% endif %}
       </div>
     </div>
@@ -103,45 +103,125 @@
 {% block coverage %}
 {% endblock %}
 {% if warnings %}
-  <section id="warnings">
-    <div class="container">
-      <h1>Warnings</h1>
-      {% for warning in warnings %}
-        <div class="status badge warning">WARNING</div>
-        <div>{{ warning.filename }}:{{ warning.lineno }}<br>{{ warning.message }}</div>
-      {% endfor %}
-    </div>
-  </section>
+<section id="warnings">
+  <div class="container">
+    <h1>Warnings</h1>
+    {% for warning in warnings %}
+    <div class="status badge warning">WARNING</div>
+    <div>{{ warning.filename }}:{{ warning.lineno }}<br>{{ warning.message }}</div>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 <section id="test-files">
   <div class="container">
-    <h1>Tests</h1>
+    <!--函数总长度-->
+    {% set c = namespace(counter = 0) %}
+    {% set test_items = [] %}
+    {% for test in tests %}
+    {% if test.status.category != 'skipped' %}
+      {% set c.counter = c.counter + 1 %}
+    {% set name = test.item.nodeid.split('::')[1:]|join('::') %}
+    {% set funcname, _, params = name.partition('[') %}
+      {% if funcname not in test_items %}
+        {{ test_items.append(funcname) or "" }}
+      {% endif %}
+    {% endif %}
+    {% endfor %}
+    <!--覆盖point的函数个数-->
+    {% set uf = namespace(unique_functions = {}) %}
+    {% for group in coverages.functional.groups %}
+    {% for point in group.points %}
+    {% for func_list in point.functions.values() %}
+    {% for func in func_list %}
+    {% if func not in uf.unique_functions and func in test_items %}
+    {% set _ = uf.unique_functions.update({func: true}) %}
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+    {% endfor %}
+    {% endfor %}
+    {% if c.counter != 0 %}
+    {% set mf_rate = (uf.unique_functions.keys()|length / c.counter * 100) %}
+    {% endif %}
+    <div style="margin-bottom: 1rem;margin-left: 0.5rem">
+      <span class="fspath" style="font-weight: bold">Marked Functions: </span>
+      <span style="font-weight: bold;{% if mf_rate < 100 %}color: red;{% endif %}">
+        {{ uf.unique_functions.keys()|length }}/{{ c.counter }}
+        {% if c.counter != 0 %}
+        ({{ mf_rate|round(2) }}%)
+        {% endif %}
+      </span>
+    </div>
+    <!--每个文件对应几个point-->
+    {% set path_to_point_names = {} %}
+    {% set func_to_point_names = {} %}
+    {% for group in coverages.functional.groups %}
+      {% for point in group.points %}
+        {% for func_list in point.functions.values() %}
+          {% for func in func_list %}
+            {% set parts = func.split('.') %}
+            {% if parts|length >= 3 %}
+              {% set path = parts[1:-1]|join('/') + '.py' %}
+              {% if path not in path_to_point_names %}
+                {% set _ = path_to_point_names.update({path: [group.name + ':' + point.name]}) %}
+              {% else %}
+                {% if group.name + ':' + point.name not in path_to_point_names[path] %}
+                  {% set new_list = path_to_point_names[path] + [group.name + ':' + point.name] %}
+                  {% set _ = path_to_point_names.update({path: new_list}) %}
+                {% endif %}
+              {% endif %}
+
+              {% set func_path = parts[-1] %}
+              {% if path + ':' + func_path not in func_to_point_names %}
+                {% set _1 = func_to_point_names.update({path + ':' + func_path: [group.name + ':' + point.name]}) %}
+              {% else %}
+                {% if group.name + ':' + point.name not in func_to_point_names[path + ':' + func_path] %}
+                  {% set new_list_1 = func_to_point_names[path + ':' + func_path] + [group.name + ':' + point.name] %}
+                  {% set _1 = func_to_point_names.update({path + ':' + func_path: new_list_1}) %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      {% endfor %}
+    {% endfor %}
+
     {% for fspath, tests in tests|groupby('item.fspath') %}
-      {% set first_item = tests|map(attribute='item')|first %}
-      <details class="file">
-        <summary>
-          <h2 class="title file-title">
-            {% block module_title scoped %}
-            <span class="fspath">
+    {% set first_item = tests|map(attribute='item')|first %}
+    <details class="file">
+      <summary>
+        <h2 class="title file-title">
+          {% block module_title scoped %}
+          <span class="fspath">
               {% block module_name scoped %}
               {{ first_item.nodeid.split('::')|first }}
               {% endblock %}
             </span>
-            <span class="counts">
+          <span class="counts">
             {% for category, tests in tests|groupby('status.category') -%}
               <span title="{{ tests|count }} {{ category }}" class="count status badge {{ category }} {{ tests|map(attribute='status.style')|first|join(' ') }}">{{ tests|count }}</span>
             {%- endfor %}
             </span>
-            <span class="duration">
+          {% set pc = namespace(point_count = 0) %}
+          {% for path,point_names  in path_to_point_names.items() %}
+            {% if path == first_item.nodeid.split('::')|first %}
+              {% set pc.point_count = point_names|length %}
+            {% endif %}
+          {% endfor %}
+          <span>
+          <span class="point-num {% if pc.point_count > 0 %}point-num-green{% else %}point-num-red{% endif %}" style="margin-left: 1rem;">{{pc.point_count}}</span>
+          </span>
+          <span class="duration">
               {{ tests|map(attribute='phases')|map('sum', 'report.duration')|sum|timedelta }}
             </span>
-            {% endblock %}
-          </h2>
-        </summary>
-        <div class="content box">
-          {% include "html/module.html" %}
-        </div>
-      </details>
+          {% endblock %}
+        </h2>
+      </summary>
+      <div class="content box">
+        {% include "html/module.html" %}
+      </div>
+    </details>
     {% endfor %}
   </div>
 </section>

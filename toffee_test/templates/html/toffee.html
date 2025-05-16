@@ -148,42 +148,120 @@ document.addEventListener("DOMContentLoaded", function() {
 
     {% set fc_grate = coverages.functional.grate %}
     {% set show_once = coverages.functional.has_once %}
-
-    <div style="text-align: center;">
+    <div style="text-align: center; margin-bottom: 0.4rem">
       Groups: {{hints_g}}/{{total_g}} (<span style="font-weight: bold; color: {% if rate_g < fc_grate %}red {% else  %} green {% endif %};">{{rate_g|round(2)}}%</span>) &nbsp;&nbsp;&nbsp;&nbsp;
       Points: {{hints_p}}/{{total_p}} (<span style="font-weight: bold; color: {% if rate_p < fc_grate %}red {% else  %} green {% endif %};">{{rate_p|round(2)}}%</span>) &nbsp;&nbsp;&nbsp;&nbsp;
       Bins:  {{hints_b}}/{{total_b}}  (<span style="font-weight: bold; color: {% if rate_b < fc_grate %}red {% else  %} green {% endif %};">{{rate_b|round(2)}}%</span>)
     </div>
-    <ul style="height: 66.67vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-right:10px">
+    <ul style="height: 56vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-top: 10px; padding-right:10px; margin: 0;">
       {% for group in coverages.functional.groups %}
-      <li class="group_name">Group: {{group.name}} {% if group.hinted %}<span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
-                                                                        <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}
+      <li class="group_name">
+        <span>Group: {{group.name}}</span>
+        {% if group.hinted %}
+        <span class="{{group.name}}" style="float: right; color: green;">Passed</span>
+        {% else %}
+        <span class="{{group.name}}" style="float: right; color: red;">Failed</span>
+        {% endif %}
       </li>
-        <ul class="group_name">
-        {% for point in group.points %}
-          <li class="point_name">
-              {% if point.once %}
-              <span style="color: brown; font-weight: bold;">*</span>
-              {% endif %}
-            Point: {{point.name}} {% if point.hinted %}
-              <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
-              <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}</li>
-          <ul class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
-          {% for bin in point.bins %}
-            <li class="bin_name {%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
-                {% if bin.hints != 0 %}
-                  <span style="float: right; color: green;">{{bin.hints}}</span>
-                {% else %}
-                  <span style="float: right; color: red;">{{bin.hints}}</span>
-                {% endif %}
-              {% else %}
-                <span style="float: right; color: red;">0</span>
-              {% endif %}
-            </li>
+
+      <details class="funs-detail funs-detail-back">
+        <summary>
+          <span class="title file-title">
+            <span class="{% if group.point_functions|length == 0 %}highlight{% endif %}">
+              Functions
+            </span>
+          </span>
+        </summary>
+        <div>
+          {% for func in group.point_functions %}
+          {% set parts = func.split('.') %}
+          {% if parts|length > 2 %}
+          {% set middle = parts[1:-2] %}
+          {% set second_last = parts[-2] + '.py' %}
+          {% set last = parts[-1] %}
+          {% set new_func = (middle + [second_last]) | join('/') + '/' + last %}
+          {% else %}
+          {% set new_func = func %}
+          {% endif %}
+          <div class="funs-name" title="{{new_func}}">{{ new_func }}</div>
           {% endfor %}
-          </ul>
+        </div>
+      </details>
+
+      <ul class="group_name">
+      {% for point in group.points %}
+        <li class="point_name">
+            {% if point.once %}
+            <span style="color: brown; font-weight: bold;">*</span>
+            {% endif %}
+          Point: {{point.name}} {% if point.hinted %}
+            <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
+            <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}</li>
+        <!--查找point.name对应的项-->
+        {% set target_point_name = point.name %}
+        {% set fp = namespace(found_point=none) %}
+        {% for point in group.points %}
+          {% if point.name == target_point_name %}
+            {% set fp.found_point = point %}
+          {% endif %}
+        {% endfor %}
+        <!--去重functions-->
+        {% if fp.found_point and fp.found_point.functions %}
+          {% set all_values = [] %}
+          {% for value_list in fp.found_point.functions.values() %}
+            {% for value in value_list %}
+              {% set _ = all_values.append(value) %}
+            {% endfor %}
+          {% endfor %}
+          {% set uv = namespace(unique_values = []) %}
+          {% set seen_values = [] %}
+          {% for value in all_values %}
+            {% if value not in seen_values %}
+              {% set _ = seen_values.append(value) %}
+              {% set _ = uv.unique_values.append(value) %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        <details class="funs-detail funs-detail-back">
+          <summary>
+            <span class="title file-title">
+              <span class="{% if uv.unique_values|length == 0 %}highlight{% endif %}">
+                Functions
+              </span>
+            </span>
+          </summary>
+          <div>
+            {% for func in uv.unique_values %}
+            {% set parts = func.split('.') %}
+            {% if parts|length > 2 %}
+            {% set middle = parts[1:-2] %}
+            {% set second_last = parts[-2] + '.py' %}
+            {% set last = parts[-1] %}
+            {% set new_func = (middle + [second_last]) | join('/') + '/' + last %}
+            {% else %}
+            {% set new_func = func %}
+            {% endif %}
+            <div class="funs-name" title="{{new_func}}">{{ new_func }}</div>
+            {% endfor %}
+          </div>
+        </details>
+
+        <ul class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
+        {% for bin in point.bins %}
+          <li class="bin_name {%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
+              {% if bin.hints != 0 %}
+                <span style="float: right; color: green;">{{bin.hints}}</span>
+              {% else %}
+                <span style="float: right; color: red;">{{bin.hints}}</span>
+              {% endif %}
+            {% else %}
+              <span style="float: right; color: red;">0</span>
+            {% endif %}
+          </li>
         {% endfor %}
         </ul>
+      {% endfor %}
+      </ul>
       {% endfor %}
     {% endif %}
     </ul>
@@ -192,7 +270,7 @@ document.addEventListener("DOMContentLoaded", function() {
   <div style="text-align: center;"><span style="color: brown; font-weight: bold;">*</span>: It means that once this coverage point is set as hinted, its bins will no longer be counted.</div>
   {% endif %}
 </div>
-
+<!-- 打印完整数据结构 -->
 <section id="coverage">
   <hr>
   <div class="container">
@@ -234,11 +312,13 @@ document.addEventListener("DOMContentLoaded", function() {
             <th>Coverage Rate</th>
             <th>Hint Points</th>
             <th>Total Points</th>
+            <th>Marked Points</th>
             <th>Detail</th>
           </tr>
           <tr>
           <tr>
             {% if coverages.functional is none %}
+            <td>N/A</td>
             <td>N/A</td>
             <td>N/A</td>
             <td>N/A</td>
@@ -253,6 +333,38 @@ document.addEventListener("DOMContentLoaded", function() {
             </td>
             <td>{{ coverages.functional.point_num_hints }}</td>
             <td>{{ coverages.functional.point_num_total }}</td>
+
+            {% set result = {"total": 0, "has_valid": false} %}
+            {% for group in coverages.functional.groups %}
+            {% for point in group.points %}
+            {% set _ = result.update({"has_valid": false}) %}
+            {% for func_name, func_list in point.functions.items() %}
+            {% if func_list|length > 0 %}
+            {% set _ = result.update({"has_valid": true}) %}
+            {% endif %}
+            {% endfor %}
+            {% if result.has_valid %}
+            {% set _ = result.update({"total": result.total + 1}) %}
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+
+            {% set tp = namespace(total_points = 0) %}
+            {% for group in coverages.functional.groups %}
+              {% set tp.total_points = tp.total_points + group.points|length %}
+            {% endfor %}
+
+            {% if tp.total_points != 0 %}
+            {% set mf_rate = (result.total / tp.total_points * 100) %}
+            {% endif %}
+            <td>
+              {{result.total}}/{{ tp.total_points }}
+              {% if tp.total_points != 0 %}
+              <span style="font-weight: bold;{% if mf_rate < 100 %}color: red;{% endif %}">
+                ({{ mf_rate|round(2) }}%)
+              </span>
+              {% endif %}
+            </td>
             <td><a href="javascript:openFunctionalDetailModal()">View Details</a></td>
             {% endif %}
           </tr>

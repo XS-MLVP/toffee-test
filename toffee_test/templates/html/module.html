@@ -1,27 +1,49 @@
 {% block module_content scoped %}
+{% set mi = namespace(matched_items = {}) %}
 {% for test in tests %}
-  <details class="test {{ test.status.category }}">
+<details class="test {{ test.status.category }}">
     <summary>
-      <h3 class="title test-title">
-        {% block test_title scoped %}
-        <span class="status badge {{ test.status.category }} {{ test.status.style|join(' ') }}">{{ test.status.word }}</span>
-        <span class="test-name">
+        <h3 class="title test-title">
+            {% block test_title scoped %}
+            <span class="status badge {{ test.status.category }} {{ test.status.style|join(' ') }}">{{ test.status.word }}</span>
+            <span class="test-name">
           {% block test_name scoped %}
           {% set name = test.item.nodeid.split('::')[1:]|join('::') %}
           {% set funcname, _, params = name.partition('[') %}
           <span class="funcname">{{ funcname }}</span>
           {%- if params -%}
-            <span class="params">[{{ params }}</span>
-          {% endif %}
+          <span class="params">[{{ params }}</span>{% endif %}
+          {% set rc = namespace(result_count = 0) %}
+          {% set mii = namespace(matched_items_inner = {}) %}
+            {% for key, value in func_to_point_names.items() %}
+              {% set split_key = key.split(':') %}
+              {% if split_key[0] == first_item.nodeid.split('::')|first and split_key[1] == funcname %}
+                {% set rc.result_count = value|length %}
+                {% set _ = mii.matched_items_inner.update({key: value}) %}
+              {% endif %}
+            {% endfor %}
+            {% set mi.matched_items = mii.matched_items_inner %}
+          <span class="point-num
+            {% if test.status.word == 'SKIPPED' %}
+                point-num-gray
+            {% else %}
+                {% if rc.result_count > 0 %}
+                    point-num-green
+                {% else %}
+                    point-num-red
+                {% endif %}
+            {% endif %}"
+            style="margin-left: 1rem;">{{rc.result_count}}</span>
           {% endblock %}
         </span>
-        <span class="duration">{{ test.phases|sum('report.duration')|timedelta }}</span>
-        {% endblock %}
-      </h3>
+            <span class="duration">{{ test.phases|sum('report.duration')|timedelta }}</span>
+            {% endblock %}
+        </h3>
     </summary>
     <div class="content">
-      {% include "html/test.html" %}
+        {% set matched_groups = mi.matched_items %}
+        {% include "html/test.html" %}
     </div>
-  </details>
+</details>
 {% endfor %}
 {% endblock %}
