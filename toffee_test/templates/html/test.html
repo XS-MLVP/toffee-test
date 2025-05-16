@@ -85,6 +85,26 @@
     </tr>
   {% endfor %}
 {% endfor %}
+
+  {% set fv = namespace(formatted_values = []) %}
+  {% for key, value in matched_groups.items() %}
+    {% set pv = namespace(processed_values = []) %}
+    {% for item in value %}
+      {% set parts = item.split(':') %}
+      {% set pv.processed_values = pv.processed_values + [parts|join('.')] %}
+    {% endfor %}
+    {% set fv.formatted_values = pv.processed_values %}
+  {% endfor %}
+  <tr>
+    <th>Points</th>
+    <td>
+      <div>
+        {% for item in fv.formatted_values %}
+        <div>{{ item }}</div>
+        {% endfor %}
+      </div>
+    </td>
+  </tr>
 {% endblock %}
 </table>
 {% for phase in test.phases if phase.call and phase.call.excinfo %}
