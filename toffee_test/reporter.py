@@ -4,7 +4,7 @@ import uuid
 from collections import Counter
 from datetime import datetime
 from filelock import FileLock
-from toffee.funcov import CovGroup
+from toffee.funcov import CovGroup, get_func_full_name
 
 from .utils import convert_line_coverage, get_toffee_custom_key_value
 
@@ -259,6 +259,10 @@ def process_context(context, config):
         "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99)),
         "functional": __update_func_coverage__(coverage_func_list),
     }
+    test_abstract_info = {
+        get_func_full_name(t["item"].function):t["status"]["word"] for t in context["tests"]
+    }
+    context["test_abstract_info"] = test_abstract_info
     if config.option.toffee_report_dump_json:
         def default(o):
             try:
