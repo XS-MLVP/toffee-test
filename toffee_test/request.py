@@ -76,16 +76,11 @@ class ToffeeRequest:
 
             if waveform_filename is not None:
                 self.waveform_filename = waveform_filename
-                final_kwargs["waveform_filename"] = self.waveform_filename
             if coverage_filename is not None:
                 self.coverage_filename = coverage_filename
-                final_kwargs["coverage_filename"] = self.coverage_filename
 
-            self.dut = dut_cls(
-                waveform_filename=self.waveform_filename,
-                coverage_filename=self.coverage_filename,
-                **dut_extra_kwargs,
-            )
+            final_kwargs["waveform_filename"] = self.waveform_filename
+            final_kwargs["coverage_filename"] = self.coverage_filename
 
             if self.cov_groups is not None:
                 self.__add_cov_sample(self.cov_groups)
@@ -95,7 +90,7 @@ class ToffeeRequest:
             if coverage_filename is not None:
                 final_kwargs["coverage_filename"] = coverage_filename
 
-            self.dut = dut_cls(*dut_extra_args, **final_kwargs)
+        self.dut = dut_cls(*dut_extra_args, **final_kwargs)
 
         if clock_name:
             self.dut.InitClock(clock_name)
