@@ -45,6 +45,7 @@ class ToffeeRequest:
         clock_name=None,
         waveform_filename=None,
         coverage_filename=None,
+        dut_extra_args=(),
         dut_extra_kwargs={},
     ):
         """
@@ -53,13 +54,15 @@ class ToffeeRequest:
         Args:
             dut_cls: The DUT class.
             clock_name: The clock pin name.
-            waveform_filename: The waveform filename. if not set, it will be set to default.
-            coverage_filename: The coverage filename. if not set, it will be set to default.
-            dut_extra_kwargs: The extra kwargs for the DUT. eg. {"arg1": 1, "arg2": 2}
-
+            waveform_filename: The waveform filename. If not set, it will be auto-generated.
+            coverage_filename: The coverage filename. If not set, it will be auto-generated.
+            dut_extra_args: Extra positional arguments for the DUT. e.g., ("arg1", "args2")
+            dut_extra_kwargs: Extra keyword arguments for the DUT. e.g., {"arg1": 1, "arg2": 2}
         Returns:
             The DUT instance.
         """
+
+        final_kwargs = dict(dut_extra_kwargs)
 
         if self.__need_report():
             report_dir = os.path.dirname(self.request.config.option.report[0])
@@ -73,8 +76,10 @@ class ToffeeRequest:
 
             if waveform_filename is not None:
                 self.waveform_filename = waveform_filename
+                final_kwargs["waveform_filename"] = self.waveform_filename
             if coverage_filename is not None:
                 self.coverage_filename = coverage_filename
+                final_kwargs["coverage_filename"] = self.coverage_filename
 
             self.dut = dut_cls(
                 waveform_filename=self.waveform_filename,
@@ -85,11 +90,12 @@ class ToffeeRequest:
             if self.cov_groups is not None:
                 self.__add_cov_sample(self.cov_groups)
         else:
-            self.dut = dut_cls(
-                waveform_filename=waveform_filename,
-                coverage_filename=coverage_filename,
-                **dut_extra_kwargs,
-            )
+            if waveform_filename is not None:
+                final_kwargs["waveform_filename"] = waveform_filename
+            if coverage_filename is not None:
+                final_kwargs["coverage_filename"] = coverage_filename
+
+            self.dut = dut_cls(*dut_extra_args, **final_kwargs)
 
         if clock_name:
             self.dut.InitClock(clock_name)
