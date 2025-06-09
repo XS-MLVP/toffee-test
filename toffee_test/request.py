@@ -82,6 +82,8 @@ class ToffeeRequest:
             final_kwargs["waveform_filename"] = self.waveform_filename
             final_kwargs["coverage_filename"] = self.coverage_filename
 
+            self.dut = dut_cls(*dut_extra_args, **final_kwargs)
+
             if self.cov_groups is not None:
                 self.__add_cov_sample(self.cov_groups)
         else:
@@ -90,7 +92,7 @@ class ToffeeRequest:
             if coverage_filename is not None:
                 final_kwargs["coverage_filename"] = coverage_filename
 
-        self.dut = dut_cls(*dut_extra_args, **final_kwargs)
+            self.dut = dut_cls(*dut_extra_args, **final_kwargs)
 
         if clock_name:
             self.dut.InitClock(clock_name)
