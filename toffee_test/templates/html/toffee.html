@@ -354,15 +354,13 @@ document.addEventListener("DOMContentLoaded", function() {
               {% set tp.total_points = tp.total_points + group.points|length %}
             {% endfor %}
 
-            {% if tp.total_points != 0 %}
-            {% set mf_rate = (result.total / tp.total_points * 100) %}
-            {% endif %}
             <td>
               {{result.total}}/{{ tp.total_points }}
               {% if tp.total_points != 0 %}
+              {% set mf_rate = (result.total / tp.total_points * 100) %}
               <span style="font-weight: bold;{% if mf_rate < 100 %}color: red;{% endif %}">
-                ({{ mf_rate|round(2) }}%)
-              </span>
+                  ({{ mf_rate|round(2) }}%)
+                </span>
               {% endif %}
             </td>
             <td><a href="javascript:openFunctionalDetailModal()">View Details</a></td>
