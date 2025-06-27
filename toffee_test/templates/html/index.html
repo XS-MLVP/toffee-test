@@ -141,17 +141,17 @@
     {% endfor %}
     {% endfor %}
     {% endfor %}
-    {% if c.counter != 0 %}
-    {% set mf_rate = (uf.unique_functions.keys()|length / c.counter * 100) %}
-    {% endif %}
-    <div style="margin-bottom: 1rem;margin-left: 0.5rem">
+    <div style="margin-bottom: 1rem; margin-left: 0.5rem">
       <span class="fspath" style="font-weight: bold">Marked Functions: </span>
-      <span style="font-weight: bold;{% if mf_rate < 100 %}color: red;{% endif %}">
-        {{ uf.unique_functions.keys()|length }}/{{ c.counter }}
-        {% if c.counter != 0 %}
-        ({{ mf_rate|round(2) }}%)
-        {% endif %}
-      </span>
+      <span style="font-weight: bold;
+    {% if c.counter != 0 and (uf.unique_functions.keys()|length / c.counter * 100) < 100 %}
+      color: red;
+    {% endif %}">
+    {{ uf.unique_functions.keys()|length }}/{{ c.counter }}
+    {% if c.counter != 0 %}
+      ({{ (uf.unique_functions.keys()|length / c.counter * 100)|round(2) }}%)
+    {% endif %}
+  </span>
     </div>
     <!--每个文件对应几个point-->
     {% set path_to_point_names = {} %}
