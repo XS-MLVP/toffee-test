@@ -284,6 +284,12 @@ header {
  MODULES
 **********************************************/
 
+.file-title-func {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
 .file-title {
     display: grid;
     grid-template-columns: auto auto 1fr auto;
