@@ -120,12 +120,12 @@
     {% set test_items = [] %}
     {% for test in tests %}
     {% if test.status.category != 'skipped' %}
-      {% set c.counter = c.counter + 1 %}
+    {% set c.counter = c.counter + 1 %}
     {% set name = test.item.nodeid.split('::')[1:]|join('::') %}
     {% set funcname, _, params = name.partition('[') %}
-      {% if funcname not in test_items %}
-        {{ test_items.append(funcname) or "" }}
-      {% endif %}
+    {% if funcname not in test_items %}
+    {{ test_items.append(funcname) or "" }}
+    {% endif %}
     {% endif %}
     {% endfor %}
     <!--覆盖point的函数个数-->
@@ -157,41 +157,58 @@
     {% set path_to_point_names = {} %}
     {% set func_to_point_names = {} %}
     {% for group in coverages.functional.groups %}
-      {% for point in group.points %}
-        {% for func_list in point.functions.values() %}
-          {% for func in func_list %}
-            {% set parts = func.split('.') %}
-            {% if parts|length >= 3 %}
-              {% set path = parts[1:-1]|join('/') + '.py' %}
-              {% if path not in path_to_point_names %}
-                {% set _ = path_to_point_names.update({path: [group.name + ':' + point.name]}) %}
-              {% else %}
-                {% if group.name + ':' + point.name not in path_to_point_names[path] %}
-                  {% set new_list = path_to_point_names[path] + [group.name + ':' + point.name] %}
-                  {% set _ = path_to_point_names.update({path: new_list}) %}
-                {% endif %}
-              {% endif %}
+    {% for point in group.points %}
+    {% for bin_name, func_list in point.functions.items() %}
+    {% for func in func_list %}
+    {# 处理两种格式的函数路径 #}
+    {% if '::' in func %}
+    {# 格式1: 文件路径格式 /path/to/file.py::function_name #}
+    {% set parts = func.split('::') %}
+    {% set path = parts[0] %}
+    {% set func_name = parts[-1] %}
+    {% else %}
+    {# 格式2: 模块路径格式 module.submodule.function_name #}
+    {% set parts = func.split('.') %}
+    {% if parts|length >= 3 %}
+    {% set path = parts[1:-1]|join('/') + '.py' %}
+    {% set func_name = parts[-1] %}
+    {% endif %}
+    {% endif %}
 
-              {% set func_path = parts[-1] %}
-              {% if path + ':' + func_path not in func_to_point_names %}
-                {% set _1 = func_to_point_names.update({path + ':' + func_path: [group.name + ':' + point.name]}) %}
-              {% else %}
-                {% if group.name + ':' + point.name not in func_to_point_names[path + ':' + func_path] %}
-                  {% set new_list_1 = func_to_point_names[path + ':' + func_path] + [group.name + ':' + point.name] %}
-                  {% set _1 = func_to_point_names.update({path + ':' + func_path: new_list_1}) %}
-                {% endif %}
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-        {% endfor %}
-      {% endfor %}
+    {% if path and func_name %}
+    {# 更新 path_to_point_names #}
+    {% if not path_to_point_names.get(path) %}
+    {% set path_to_point_names = path_to_point_names.update({path: [group.name + ':' + point.name]}) %}
+    {% else %}
+    {% if group.name + ':' + point.name not in path_to_point_names[path] %}
+    {% set path_to_point_names = path_to_point_names.update({
+    path: path_to_point_names[path] + [group.name + ':' + point.name]
+    }) %}
+    {% endif %}
+    {% endif %}
+
+    {# 更新 func_to_point_names #}
+    {% set func_key = path + '::' + func_name %}
+    {% if not func_to_point_names.get(func_key) %}
+    {% set func_to_point_names = func_to_point_names.update({func_key: [group.name + ':' + point.name]}) %}
+    {% else %}
+    {% if group.name + ':' + point.name not in func_to_point_names[func_key] %}
+    {% set func_to_point_names = func_to_point_names.update({
+    func_key: func_to_point_names[func_key] + [group.name + ':' + point.name]
+    }) %}
+    {% endif %}
+    {% endif %}
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+    {% endfor %}
     {% endfor %}
 
     {% for fspath, tests in tests|groupby('item.fspath') %}
     {% set first_item = tests|map(attribute='item')|first %}
     <details class="file">
       <summary>
-        <h2 class="title file-title-func">
+        <h2 class="title file-title">
           {% block module_title scoped %}
           <span class="fspath">
               {% block module_name scoped %}
@@ -205,16 +222,16 @@
             </span>
           {% set pc = namespace(point_count = 0) %}
           {% for path,point_names  in path_to_point_names.items() %}
-            {% if path == first_item.nodeid.split('::')|first %}
-              {% set pc.point_count = point_names|length %}
-            {% endif %}
+          {% if path == first_item.nodeid.split('::')|first %}
+          {% set pc.point_count = point_names|length %}
+          {% endif %}
           {% endfor %}
           <span>
           <span class="point-num {% if pc.point_count > 0 %}point-num-green{% else %}point-num-red{% endif %}" style="margin-left: 1rem;">{{pc.point_count}}</span>
           </span>
           <div class="duration">
-              {{ tests|map(attribute='phases')|map('sum', 'report.duration')|sum|timedelta }}
-            </div>
+            {{ tests|map(attribute='phases')|map('sum', 'report.duration')|sum|timedelta }}
+          </div>
           {% endblock %}
         </h2>
       </summary>
