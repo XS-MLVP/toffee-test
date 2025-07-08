@@ -17,7 +17,7 @@
           {% set mii = namespace(matched_items_inner = {}) %}
             {% for key, value in func_to_point_names.items() %}
               {% set split_key = key.split(':') %}
-              {% if split_key[0] == first_item.nodeid.split('::')|first and split_key[1] == funcname %}
+              {% if split_key[0] == first_item.nodeid.split('::')|first and funcname in split_key[1] %}
                 {% set rc.result_count = value|length %}
                 {% set _ = mii.matched_items_inner.update({key: value}) %}
               {% endif %}
@@ -33,7 +33,7 @@
                     point-num-red
                 {% endif %}
             {% endif %}"
-            style="margin-left: 1rem;">{{rc.result_count}}</span>
+                style="margin-left: 1rem;">{{rc.result_count}}</span>
           {% endblock %}
         </span>
             <span class="duration">{{ test.phases|sum('report.duration')|timedelta }}</span>
