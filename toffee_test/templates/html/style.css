@@ -284,6 +284,11 @@ header {
     background: yellow;
 }
 
+.point_name {
+    display: flex;
+    align-items: start;
+}
+
 .funs-detail {
     margin: 0.3rem 0;
     max-height: 92px;
@@ -299,12 +304,16 @@ header {
 
 .funs-name {
     margin: 0.2rem;
+    margin-left: 2.5rem;
     font-size: 15px;
-    width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: pointer;
+}
+
+.funs-group {
+    width: 85%;
 }
 
 /*function*/

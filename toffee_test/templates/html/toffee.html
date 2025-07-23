@@ -155,8 +155,21 @@ openFunctionalDetailModal();
     </div>
     <ul style="height: 56vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-top: 10px; padding-right:10px; margin: 0;">
       {% for group in coverages.functional.groups %}
-      <li class="group_name">
-        <span>Group: {{group.name}}</span>
+      <li class="point_name">
+        <details class="funs-group">
+          <summary>
+          <span class="title file-title">
+            <span class="{% if group.point_functions|length == 0 %}highlight{% endif %}">
+              <span>Group: {{group.name}}</span>
+            </span>
+          </span>
+          </summary>
+          <div>
+            {% for func in group.point_functions %}
+            <div class="funs-name" title="{{func}}">{{ func }}</div>
+            {% endfor %}
+          </div>
+        </details>
         {% if group.hinted %}
         <span class="{{group.name}}" style="float: right; color: green;">Passed</span>
         {% else %}
@@ -164,30 +177,8 @@ openFunctionalDetailModal();
         {% endif %}
       </li>
 
-      <details class="funs-detail funs-detail-back" style="font-size: 0.9em;">
-        <summary>
-          <span class="title file-title">
-            <span class="{% if group.point_functions|length == 0 %}highlight{% endif %}">
-              Functions
-            </span>
-          </span>
-        </summary>
-        <div>
-          {% for func in group.point_functions %}
-          <div class="funs-name" title="{{func}}">{{ func }}</div>
-          {% endfor %}
-        </div>
-      </details>
-
       <ul class="group_name">
         {% for point in group.points %}
-        <li class="point_name">
-          {% if point.once %}
-          <span style="color: brown; font-weight: bold;">*</span>
-          {% endif %}
-          Point: {{point.name}} {% if point.hinted %}
-          <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
-          <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}</li>
         <!--查找point.name对应的项-->
         {% set target_point_name = point.name %}
         {% set fp = namespace(found_point=none) %}
@@ -213,34 +204,31 @@ openFunctionalDetailModal();
         {% endif %}
         {% endfor %}
         {% endif %}
-        <details class="funs-detail funs-detail-back" style="font-size: 0.9em;">
-          <summary>
+        <li class="point_name">
+          <details class="funs-group">
+            <summary>
             <span class="title file-title">
               <span class="{% if uv.unique_values|length == 0 %}highlight{% endif %}">
-                Functions
+                {% if point.once %}
+                <span style="color: brown; font-weight: bold;">*</span>
+                {% endif %}
+                Point: {{point.name}}
               </span>
             </span>
-          </summary>
-          <div>
-            {% for func in uv.unique_values %}
-            <div class="funs-name" title="{{func}}">{{ func }}</div>
-            {% endfor %}
-          </div>
-        </details>
+            </summary>
+            <div>
+              {% for func in uv.unique_values %}
+              <div class="funs-name" title="{{func}}">{{ func }}</div>
+              {% endfor %}
+            </div>
+          </details>
+          {% if point.hinted %}
+          <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
+          <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}
+        </li>
 
-        <ul class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
+        <ul class="{%if point.hinted%}pass{% else %}fail{% endif %}">
           {% for bin in point.bins %}
-          <li class="bin_name {%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
-            {% if bin.hints != 0 %}
-            <span style="float: right; color: green;">{{bin.hints}}</span>
-            {% else %}
-            <span style="float: right; color: red;">{{bin.hints}}</span>
-            {% endif %}
-            {% else %}
-            <span style="float: right; color: red;">0</span>
-            {% endif %}
-          </li>
-
           {% set bin_func_mapping = [] %}
           {% set bins_with_functions = [] %}
           {% if bin.name in point.functions %}
@@ -256,26 +244,38 @@ openFunctionalDetailModal();
           {% endif %}
           {% endif %}
           {% endif %}
-          <details class="funs-detail funs-detail-back" style="font-size: 0.9em;">
-            <summary>
-            <span class="title file-title">
-              <span class="{% if bin.name not in bins_with_functions %}highlight{% endif %}">
-                Functions
-              </span>
-            </span>
-            </summary>
-            <div>
-              {% for mapping in bin_func_mapping %}
-              {% for bin_name, func_list in mapping.items() %}
-              {% if bin.name == bin_name %}
-              {% for func in func_list %}
-              <div class="funs-name" title="{{func}}">{{ func }}</div>
-              {% endfor %}
-              {% endif %}
-              {% endfor %}
-              {% endfor %}
-            </div>
-          </details>
+          <li class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
+            <details class="funs-group">
+              <summary>
+                <span class="title file-title">
+                  <span class="{% if bin.name not in bins_with_functions %}highlight{% endif %}">
+                    Bin: {{bin.name}}
+                  </span>
+                </span>
+              </summary>
+              <div>
+                {% for mapping in bin_func_mapping %}
+                {% for bin_name, func_list in mapping.items() %}
+                {% if bin.name == bin_name %}
+                {% for func in func_list %}
+                <div class="funs-name" title="{{func}}">{{ func }}</div>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+                {% endfor %}
+              </div>
+            </details>
+
+            {% if total_b != 0 %}
+            {% if bin.hints != 0 %}
+            <span style="float: right; color: green;">{{bin.hints}}</span>
+            {% else %}
+            <span style="float: right; color: red;">{{bin.hints}}</span>
+            {% endif %}
+            {% else %}
+            <span style="float: right; color: red;">0</span>
+            {% endif %}
+          </li>
           {% endfor %}
         </ul>
         {% endfor %}
