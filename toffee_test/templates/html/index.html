@@ -188,7 +188,7 @@
     {% endif %}
 
     {# 更新 func_to_point_names #}
-    {% set func_key = path + '::' + func_name %}
+    {% set func_key = path + ':' + func_name %}
     {% if not func_to_point_names.get(func_key) %}
     {% set func_to_point_names = func_to_point_names.update({func_key: [group.name + ':' + point.name]}) %}
     {% else %}
@@ -221,8 +221,8 @@
             {%- endfor %}
             </span>
           {% set pc = namespace(point_count = 0) %}
-          {% for path,point_names  in path_to_point_names.items() %}
-          {% if path == first_item.nodeid.split('::')|first %}
+          {% for path,point_names in path_to_point_names.items() %}
+          {% if first_item.nodeid.split('::')|first in path %}
           {% set pc.point_count = point_names|length %}
           {% endif %}
           {% endfor %}
