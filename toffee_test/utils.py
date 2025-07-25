@@ -111,7 +111,7 @@ def _lcov_del_merge(list_to_merge, out_file):
         return
     if len(list_to_merge) == 0:
         return
-    su, so, se = exe_cmd(["lcov", *["-a %s" % f for f in list_to_merge], "-o", out_file])
+    su, so, se = exe_cmd(["lcov", *["-a '%s'" % f.replace('[', '\\[').replace(']', '\\]') for f in list_to_merge], "-o", out_file])
     assert su, f"Failed to merge line coverage: {se}"
     for f in list_to_merge:
         os.remove(f)
