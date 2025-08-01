@@ -1,142 +1,406 @@
-{% block test_content scoped %}
-{% if test.item.function.__doc__ %}
-<div class="documentation">
-  {{ test.item.function.__doc__|cleandoc|rst|safe }}
-</div>
-{% endif %}
-<table class="metadata">
-  {% block test_metadata scoped %}
-  <tr>
-    <th>Started</th>
-    <td>{{ test.started|strftime(time_format) }}</td>
-  </tr>
-  <tr>
-    <th>Ended</th>
-    <td>{{ test.ended|strftime(time_format) }}</td>
-  </tr>
-  <tr>
-    <th>Duration</th>
-    <td>{{ test.phases|sum(attribute='report.duration')|timedelta }}</td>
-  </tr>
-  {% for name, value in test.phases|map(attribute='report.user_properties')|chain|unique %}
-  <tr>
-    <th>{{ name }}</th>
-    <td>{{ value|escape|urlize }}</td>
-  </tr>
-  {% endfor %}
-  {# TODO: Use keywords from TestReport to support dynamically added markers with xdist #}
-  {% set markers = test.item.iter_markers()|rejectattr('name', '==', 'parametrize')|list|unique(attribute='name') %}
-  {% if markers %}
-  <tr>
-    <th>Markers</th>
-    <td>
-      {% for marker in markers %}
-      <div class="marker">
-        <span class="marker-name badge">{{ marker.name }}</span>
-        <span class="marker-args">
-            {% for value in marker.args %}
-              {{ value|repr }}
-            {% endfor %}
+{% extends "html/index.html" %}
 
-            {% for key, value in marker.kwargs.items() %}
-              {{ key }}={{ value|repr }}
-            {% endfor %}
-          </span>
-      </div>
-      {% endfor %}
-    </td>
-  </tr>
-  {% endif %}
-  {% if test.item.fixturenames %}
-  <tr>
-    <th>Fixtures</th>
-    <td>
-      {% for fixturename in test.item.fixturenames if not fixturename.startswith('_') %}
-      <span class="badge fixturename">
-          {{ fixturename }}
-        </span>
-      {% endfor %}
-    </td>
-  </tr>
-  {% endif %}
-  {% for phase in test.phases %}
-  {% for extra in phase.report.extra|default([]) %}
-  <tr class="extra extra-{{ extra.format }}">
-    <th>{{ extra.name }}</th>
-    <td>
-      {% if extra.format == 'image' %}
-      <img src="{{ extra.content|asset(extra.extension) }}" alt="{{ extra.name }}">
-      {% elif extra.format == 'video' %}
-      <video controls>
-        <source src="{{ extra.content|asset(extra.extension) }}" type="{{ extra.mime_type }}">
-      </video>
-      {% elif extra.format == 'html' %}
-      {{ extra.content|safe }}
-      {% elif extra.format == 'text' %}
-      <pre>{{ extra.content|escape }}</pre>
-      {% elif extra.format == 'json' %}
-      <pre>{{ extra.content|tojson(indent=2) }}</pre>
-      {% elif extra.format == 'url' %}
-      {{ extra.content|urlize }}
-      {% else %}
-      ?
-      {% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-  {% endfor %}
+{% block script %}
+function openFunctionalDetailModal() {
+document.getElementById('functional-detail-modal-overlay').style.display = 'block';
+document.getElementById('functional-detail-modal').style.display = 'block';
+dragElement(document.getElementById('functional-detail-modal'));
+}
 
-  {% set fv = namespace(formatted_values = []) %}
-  {% for key, value in matched_groups.items() %}
-  {% set pv = namespace(processed_values = []) %}
-  {% for item in value %}
-  {% set parts = item.split(':') %}
-  {% set pv.processed_values = pv.processed_values + [parts|join('.')] %}
-  {% endfor %}
-  {% set fv.formatted_values = pv.processed_values %}
-  {% endfor %}
-  <tr>
-    <th>Points</th>
-    <td>
-      <div>
-        {% for item in fv.formatted_values %}
-        <div>{{ item }}</div>
-        {% endfor %}
-      </div>
-    </td>
-  </tr>
-  {% endblock %}
-</table>
-{% for phase in test.phases if phase.call and phase.call.excinfo %}
-<div class="repr">
-  <pre><samp>{{ phase.call.excinfo.exconly(tryshort=True)|ansi|safe }}</samp></pre>
-</div>
-{% endfor %}
-<div class="test-phases">
-  {% for phase in test.phases %}
-  <details class="phase {{ phase.report.when }} {{ phase.status.category }}" {{ 'open' if phase.status.category }}>
-  <summary>
-    <h4 class="title">
-      {% if phase.status.category %}
-      <span class="status {{ phase.status.style|join(' ') }} {{ phase.status.category }}"></span>
-      {% endif %}
-      <span class="phase-name">{{ phase.report.when|title }}</span>
-    </h4>
-  </summary>
-  <div class="content">
-    {% if phase.report.longrepr %}
-    <div class="repr">
-      <pre><samp>{{ phase.report.longreprtext|ansi|safe }}</samp></pre>
-    </div>
-    {% endif %}
-    {% for section, content in phase.sections %}
-    <div class="section">
-      <h5 class="section-title">{{ section }}</h5>
-      <pre><samp>{{ content|escape|replace('\r\n', '\n')|ansi|safe }}</samp></pre>
-    </div>
-    {% endfor %}
+// 关闭模态框
+function closeFunctionalDetailModal() {
+document.getElementById('functional-detail-modal-overlay').style.display = 'none';
+document.getElementById('functional-detail-modal').style.display = 'none';
+}
+
+function dragElement(elmnt) {
+var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+elmnt.onmousedown = dragMouseDown;
+function dragMouseDown(e) {
+e = e || window.event;
+e.preventDefault();
+// get the mouse cursor position at startup:
+pos3 = e.clientX;
+pos4 = e.clientY;
+document.onmouseup = closeDragElement;
+// call a function whenever the cursor moves:
+document.onmousemove = elementDrag;
+}
+function elementDrag(e) {
+e = e || window.event;
+e.preventDefault();
+// calculate the new cursor position:
+pos1 = pos3 - e.clientX;
+pos2 = pos4 - e.clientY;
+pos3 = e.clientX;
+pos4 = e.clientY;
+// set the element's new position:
+elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+}
+function closeDragElement() {
+// stop moving when mouse button is released:
+document.onmouseup = null;
+document.onmousemove = null;
+}
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+const urlParams = new URLSearchParams(window.location.search);
+const K = urlParams.getAll('K');
+var filterString = "";
+for (let i = 0; i < K.length; i++) {
+const params = K[i].split(",");
+if(params.length != 6){
+console.log("Formart of: K["+i+"] is empty: " + K[i]);
+continue;
+}
+console.log("K["+i+"]: " + params.join(","));
+const firstTag    = params[0].toUpperCase();  // Item need remain
+const firstClass  = params[1];
+const secondTag   = params[2].toUpperCase();  // Condition 1
+const secondClass = params[3];
+const thirdTag    = params[4].toUpperCase();  // Condition 2
+const targetStr   = params[5];
+filterString += "Item(" + firstTag + ", " + firstClass + ") with C1(" + secondTag + ", "
++ secondClass + ") and C2(" + thirdTag + ", " + targetStr + ") && ";
+// search
+const elements = document.getElementsByTagName(firstTag);
+for (let j = elements.length - 1; j >= 0; j--) {
+if (elements[j].classList.contains(firstClass)) {
+var needRemove = false;
+if(secondTag.length > 0){
+needRemove = true;
+const secondElements = elements[j].getElementsByTagName(secondTag);
+for (let k = secondElements.length - 1; k >= 0; k--) {
+if (secondElements[k].classList.contains(secondClass)) {
+needRemove = false;
+break;
+}
+}
+}
+if(thirdTag.length > 0 && !needRemove){
+needRemove = true;
+const thirdElements = elements[j].getElementsByTagName(thirdTag);
+for (let k = thirdElements.length - 1; k >= 0; k--) {
+if (thirdElements[k].outerHTML.includes(targetStr)) {
+needRemove = false;
+break;
+}
+}
+}
+if(needRemove){
+elements[j].parentNode.removeChild(elements[j]);
+}
+}
+}
+}
+if(filterString.length > 0){
+filterString = filterString.substring(0, filterString.length - 4);
+document.getElementById('tr_filter_string').style.display = '';
+document.getElementById('td_filter_string').innerHTML = filterString;
+document.getElementById('td_filter_string').style.color = '#ff00ff';
+}
+var openFuc = urlParams.getAll('ShowFunCov');
+if(openFuc.length > 0){
+if(openFuc[0] == "1" || openFuc[0] == "true"){
+openFunctionalDetailModal();
+}
+}
+});
+
+{% endblock %}
+
+{% block coverage %}
+
+<div id="functional-detail-modal-overlay" class="modal-overlay"></div>
+<div id="functional-detail-modal" class="modal">
+  <div class="container">
+    <h2>Functional Coverage <button onclick="closeFunctionalDetailModal()" style="float: right; top: 5px;">close</button></h2>
   </div>
-  </details>
-  {% endfor %}
+  <hr>
+  <div class="cantainer coverage-list">
+    {% if coverages.functional %}
+    {% set total_g = coverages.functional.group_num_total %}
+    {% set total_p = coverages.functional.point_num_total %}
+    {% set total_b = coverages.functional.bin_num_total %}
+    {% set hints_g = coverages.functional.group_num_hints %}
+    {% set hints_p = coverages.functional.point_num_hints %}
+    {% set hints_b = coverages.functional.bin_num_hints %}
+
+    {% if total_g != 0 %}
+    {% set rate_g = hints_g / total_g * 100 %}
+    {% else %}
+    {% set rate_g = 0 %}
+    {% endif %}
+
+    {% if total_p != 0 %}
+    {% set rate_p = hints_p / total_p * 100 %}
+    {% else %}
+    {% set rate_p = 0 %}
+    {% endif %}
+
+    {% if total_b != 0 %}
+    {% set rate_b = hints_b / total_b * 100 %}
+    {% else %}
+    {% set rate_b = 0 %}
+    {% endif %}
+
+    {% set fc_grate = coverages.functional.grate %}
+    {% set show_once = coverages.functional.has_once %}
+    <div style="text-align: center; margin-bottom: 0.4rem">
+      Groups: {{hints_g}}/{{total_g}} (<span style="font-weight: bold; color: {% if rate_g < fc_grate %}red {% else  %} green {% endif %};">{{rate_g|round(2)}}%</span>) &nbsp;&nbsp;&nbsp;&nbsp;
+      Points: {{hints_p}}/{{total_p}} (<span style="font-weight: bold; color: {% if rate_p < fc_grate %}red {% else  %} green {% endif %};">{{rate_p|round(2)}}%</span>) &nbsp;&nbsp;&nbsp;&nbsp;
+      Bins:  {{hints_b}}/{{total_b}}  (<span style="font-weight: bold; color: {% if rate_b < fc_grate %}red {% else  %} green {% endif %};">{{rate_b|round(2)}}%</span>)
+    </div>
+    <ul style="height: 56vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-top: 10px; padding-right:10px; margin: 0;">
+      {% for group in coverages.functional.groups %}
+      <li>
+        <div class="point_name">
+          <details class="funs-group">
+            <summary>
+          <span class="title file-title">
+            <span class="{% if group.point_functions|length == 0 %}highlight{% endif %}">
+              <span>Group: {{group.name}}</span>
+            </span>
+          </span>
+            </summary>
+            <div>
+              {% for func in group.point_functions %}
+              <div class="funs-name" title="{{func}}">{{ func }}</div>
+              {% endfor %}
+            </div>
+          </details>
+          {% if group.hinted %}
+          <span class="{{group.name}}" style="float: right; color: green;">Passed</span>
+          {% else %}
+          <span class="{{group.name}}" style="float: right; color: red;">Failed</span>
+          {% endif %}
+        </div>
+      </li>
+
+      <ul class="group_name">
+        {% for point in group.points %}
+        <!--查找point.name对应的项-->
+        {% set target_point_name = point.name %}
+        {% set fp = namespace(found_point=none) %}
+        {% for point in group.points %}
+        {% if point.name == target_point_name %}
+        {% set fp.found_point = point %}
+        {% endif %}
+        {% endfor %}
+        <!--去重functions-->
+        {% if fp.found_point and fp.found_point.functions %}
+        {% set all_values = [] %}
+        {% for value_list in fp.found_point.functions.values() %}
+        {% for value in value_list %}
+        {% set _ = all_values.append(value) %}
+        {% endfor %}
+        {% endfor %}
+        {% set uv = namespace(unique_values = []) %}
+        {% set seen_values = [] %}
+        {% for value in all_values %}
+        {% if value not in seen_values %}
+        {% set _ = seen_values.append(value) %}
+        {% set _ = uv.unique_values.append(value) %}
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+        <li>
+          <div class="point_name">
+            <details class="funs-group">
+              <summary>
+                <span class="title file-title">
+                  <span class="{% if uv.unique_values|length == 0 %}highlight{% endif %}">
+                    {% if point.once %}
+                    <span style="color: brown; font-weight: bold;">*</span>
+                    {% endif %}
+                    Point: {{point.name}}
+                  </span>
+                </span>
+              </summary>
+              <div>
+                {% for func in uv.unique_values %}
+                <div class="funs-name" title="{{func}}">{{ func }}</div>
+                {% endfor %}
+              </div>
+            </details>
+            {% if point.hinted %}
+            <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
+            <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}
+          </div>
+        </li>
+
+        <ul class="{%if point.hinted%}pass{% else %}fail{% endif %}">
+          {% for bin in point.bins %}
+          {% set bin_func_mapping = [] %}
+          {% set bins_with_functions = [] %}
+          {% if bin.name in point.functions %}
+          {% set _ = bin_func_mapping.append({bin.name: point.functions[bin.name]}) %}
+          {% set _ = bins_with_functions.append(bin.name) %}
+          {% else %}
+          {% set name_parts = bin.name.split('_') %}
+          {% if name_parts|length > 1 %}
+          {% set wildcard_key = name_parts[0] + '_*' %}
+          {% if wildcard_key in point.functions %}
+          {% set _ = bin_func_mapping.append({bin.name: point.functions[wildcard_key]}) %}
+          {% set _ = bins_with_functions.append(bin.name) %}
+          {% endif %}
+          {% endif %}
+          {% endif %}
+          <li class="{%if point.hinted%}pass{% else %}fail{% endif %}">
+            <div class="point_name">
+              <details class="funs-group">
+                <summary>
+                <span class="title file-title">
+                  <span class="{% if bin.name not in bins_with_functions %}highlight{% endif %}">
+                    Bin: {{bin.name}}
+                  </span>
+                </span>
+                </summary>
+                <div>
+                  {% for mapping in bin_func_mapping %}
+                  {% for bin_name, func_list in mapping.items() %}
+                  {% if bin.name == bin_name %}
+                  {% for func in func_list %}
+                  <div class="funs-name" title="{{func}}">{{ func }}</div>
+                  {% endfor %}
+                  {% endif %}
+                  {% endfor %}
+                  {% endfor %}
+                </div>
+              </details>
+              {% if total_b != 0 %}
+              {% if bin.hints != 0 %}
+              <span style="float: right; color: green;">{{bin.hints}}</span>
+              {% else %}
+              <span style="float: right; color: red;">{{bin.hints}}</span>
+              {% endif %}
+              {% else %}
+              <span style="float: right; color: red;">0</span>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+      {% endif %}
+    </ul>
+  </div>
+  {% if show_once %}
+  <div style="text-align: center;"><span style="color: brown; font-weight: bold;">*</span>: It means that once this coverage point is set as hinted, its bins will no longer be counted.</div>
+  {% endif %}
+</div>
+<!-- 打印完整数据结构 -->
+<section id="coverage">
+  <hr>
+  <div class="container">
+    <table style="width: 100%;">
+      <td>
+        <h3>Line Coverage</h3>
+        <table class="min-width-td">
+          <tr>
+            <th>Coverage Rate</th>
+            <th>Hint Lines</th>
+            <th>Total Lines</th>
+            <th>Detail</th>
+          </tr>
+          <tr>
+            {% if coverages.line is none %}
+            <td>N/A</td>
+            <td>N/A</td>
+            <td>N/A</td>
+            <td>N/A</td>
+            {% else %}
+            {% set line_rate = 0 %}
+            {% if coverages.line.total != 0 %}
+            {% set line_rate = (coverages.line.hints / coverages.line.total * 100) %}
+            {% endif %}
+            <td>
+              <span style="font-weight: bold; color: {% if line_rate < coverages.line.grate %} red {% else %} green {% endif %};">{{ line_rate|round(2) }}%</span>
+            </td>
+            <td>{{ coverages.line.hints }}</td>
+            <td>{{ coverages.line.total }}</td>
+            <td><a href="line_dat/index.html" target="_blank">View Details</a></td>
+            {% endif %}
+          </tr>
+        </table>
+      </td>
+      <td>
+        <h3>Functional Coverage</h3>
+        <table class="min-width-td">
+          <tr>
+            <th>Coverage Rate</th>
+            <th>Hint Points</th>
+            <th>Total Points</th>
+            <th>Marked Points</th>
+            <th>Detail</th>
+          </tr>
+          <tr>
+          <tr>
+            {% if coverages.functional is none %}
+            <td>N/A</td>
+            <td>N/A</td>
+            <td>N/A</td>
+            <td>N/A</td>
+            <td>N/A</td>
+            {% else %}
+            {% set point_rate = 0 %}
+            {% if coverages.functional.point_num_total != 0 %}
+            {% set point_rate = (coverages.functional.point_num_hints / coverages.functional.point_num_total * 100) %}
+            {% endif %}
+            <td>
+              <span style="font-weight: bold; color: {% if point_rate < coverages.functional.grate %} red {% else %} green {% endif %};">{{ point_rate|round(2) }}%</span>
+            </td>
+            <td>{{ coverages.functional.point_num_hints }}</td>
+            <td>{{ coverages.functional.point_num_total }}</td>
+
+            {% set result = {"total": 0, "has_valid": false} %}
+            {% for group in coverages.functional.groups %}
+            {% for point in group.points %}
+            {% set _ = result.update({"has_valid": false}) %}
+            {% for func_name, func_list in point.functions.items() %}
+            {% if func_list|length > 0 %}
+            {% set _ = result.update({"has_valid": true}) %}
+            {% endif %}
+            {% endfor %}
+            {% if result.has_valid %}
+            {% set _ = result.update({"total": result.total + 1}) %}
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+
+            {% set tp = namespace(total_points = 0) %}
+            {% for group in coverages.functional.groups %}
+            {% set tp.total_points = tp.total_points + group.points|length %}
+            {% endfor %}
+
+            <td>
+              {{result.total}}/{{ tp.total_points }}
+              {% if tp.total_points != 0 %}
+              {% set mf_rate = (result.total / tp.total_points * 100) %}
+              <span style="font-weight: bold;{% if mf_rate < 100 %}color: red;{% endif %}">
+                  ({{ mf_rate|round(2) }}%)
+                </span>
+              {% endif %}
+            </td>
+            <td><a href="javascript:openFunctionalDetailModal()">View Details</a></td>
+            {% endif %}
+          </tr>
+          </tr>
+        </table>
+      </td>
+    </table>
+  </div>
+  <hr>
+</section>
+{% endblock %}
+
+
+{% block footer %}
+<div class="container">
+  Toffee Report, Do Not Edit.
 </div>
 {% endblock %}
