@@ -342,9 +342,9 @@ def process_func_coverage(item, call, report):
     return report
 
 
-def set_user_info(name, code):
+def set_user_info(name, email):
     global __report_info__
-    __report_info__["user"] = {"name": name, "code": code}
+    __report_info__["user"] = {"name": name, "email": email}
 
 
 def set_title_info(title):
