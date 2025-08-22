@@ -17,7 +17,7 @@
           {% set mii = namespace(matched_items_inner = {}) %}
             {% for key, value in func_to_point_names.items() %}
               {% set split_key = key.split(':') %}
-              {% if split_key[0] == first_item.nodeid.split('::')|first and funcname in split_key[1] %}
+              {% if first_item.nodeid.split('::')|first in split_key[0] and funcname == split_key[1] %}
                 {% set rc.result_count = value|length %}
                 {% set _ = mii.matched_items_inner.update({key: value}) %}
               {% endif %}

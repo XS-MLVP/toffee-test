@@ -2,111 +2,111 @@
 
 {% block script %}
 function openFunctionalDetailModal() {
-  document.getElementById('functional-detail-modal-overlay').style.display = 'block';
-  document.getElementById('functional-detail-modal').style.display = 'block';
-  dragElement(document.getElementById('functional-detail-modal'));
+document.getElementById('functional-detail-modal-overlay').style.display = 'block';
+document.getElementById('functional-detail-modal').style.display = 'block';
+dragElement(document.getElementById('functional-detail-modal'));
 }
 
 // 关闭模态框
 function closeFunctionalDetailModal() {
-  document.getElementById('functional-detail-modal-overlay').style.display = 'none';
-  document.getElementById('functional-detail-modal').style.display = 'none';
+document.getElementById('functional-detail-modal-overlay').style.display = 'none';
+document.getElementById('functional-detail-modal').style.display = 'none';
 }
 
 function dragElement(elmnt) {
-  var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-  elmnt.onmousedown = dragMouseDown;
-  function dragMouseDown(e) {
-    e = e || window.event;
-    e.preventDefault();
-    // get the mouse cursor position at startup:
-    pos3 = e.clientX;
-    pos4 = e.clientY;
-    document.onmouseup = closeDragElement;
-    // call a function whenever the cursor moves:
-    document.onmousemove = elementDrag;
-  }
-  function elementDrag(e) {
-    e = e || window.event;
-    e.preventDefault();
-    // calculate the new cursor position:
-    pos1 = pos3 - e.clientX;
-    pos2 = pos4 - e.clientY;
-    pos3 = e.clientX;
-    pos4 = e.clientY;
-    // set the element's new position:
-    elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-    elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
-  }
-  function closeDragElement() {
-    // stop moving when mouse button is released:
-    document.onmouseup = null;
-    document.onmousemove = null;
-  }
+var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+elmnt.onmousedown = dragMouseDown;
+function dragMouseDown(e) {
+e = e || window.event;
+e.preventDefault();
+// get the mouse cursor position at startup:
+pos3 = e.clientX;
+pos4 = e.clientY;
+document.onmouseup = closeDragElement;
+// call a function whenever the cursor moves:
+document.onmousemove = elementDrag;
+}
+function elementDrag(e) {
+e = e || window.event;
+e.preventDefault();
+// calculate the new cursor position:
+pos1 = pos3 - e.clientX;
+pos2 = pos4 - e.clientY;
+pos3 = e.clientX;
+pos4 = e.clientY;
+// set the element's new position:
+elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+}
+function closeDragElement() {
+// stop moving when mouse button is released:
+document.onmouseup = null;
+document.onmousemove = null;
+}
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const K = urlParams.getAll('K');
-  var filterString = "";
-  for (let i = 0; i < K.length; i++) {
-    const params = K[i].split(",");
-    if(params.length != 6){
-      console.log("Formart of: K["+i+"] is empty: " + K[i]);
-      continue;
-    }
-    console.log("K["+i+"]: " + params.join(","));
-    const firstTag    = params[0].toUpperCase();  // Item need remain
-    const firstClass  = params[1];
-    const secondTag   = params[2].toUpperCase();  // Condition 1
-    const secondClass = params[3];
-    const thirdTag    = params[4].toUpperCase();  // Condition 2
-    const targetStr   = params[5];
-    filterString += "Item(" + firstTag + ", " + firstClass + ") with C1(" + secondTag + ", "
-                                              + secondClass + ") and C2(" + thirdTag + ", " + targetStr + ") && ";
-    // search
-    const elements = document.getElementsByTagName(firstTag);
-    for (let j = elements.length - 1; j >= 0; j--) {
-      if (elements[j].classList.contains(firstClass)) {
-        var needRemove = false;
-        if(secondTag.length > 0){
-          needRemove = true;
-          const secondElements = elements[j].getElementsByTagName(secondTag);
-          for (let k = secondElements.length - 1; k >= 0; k--) {
-            if (secondElements[k].classList.contains(secondClass)) {
-              needRemove = false;
-              break;
-            }
-          }
-        }
-        if(thirdTag.length > 0 && !needRemove){
-          needRemove = true;
-          const thirdElements = elements[j].getElementsByTagName(thirdTag);
-          for (let k = thirdElements.length - 1; k >= 0; k--) {
-            if (thirdElements[k].outerHTML.includes(targetStr)) {
-              needRemove = false;
-              break;
-            }
-          }
-        }
-        if(needRemove){
-          elements[j].parentNode.removeChild(elements[j]);
-        }
-      }
-    }
-  }
-  if(filterString.length > 0){
-    filterString = filterString.substring(0, filterString.length - 4);
-    document.getElementById('tr_filter_string').style.display = '';
-    document.getElementById('td_filter_string').innerHTML = filterString;
-    document.getElementById('td_filter_string').style.color = '#ff00ff';
-  }
-  var openFuc = urlParams.getAll('ShowFunCov');
-  if(openFuc.length > 0){
-    if(openFuc[0] == "1" || openFuc[0] == "true"){
-      openFunctionalDetailModal();
-    }
-  }
+const urlParams = new URLSearchParams(window.location.search);
+const K = urlParams.getAll('K');
+var filterString = "";
+for (let i = 0; i < K.length; i++) {
+const params = K[i].split(",");
+if(params.length != 6){
+console.log("Formart of: K["+i+"] is empty: " + K[i]);
+continue;
+}
+console.log("K["+i+"]: " + params.join(","));
+const firstTag    = params[0].toUpperCase();  // Item need remain
+const firstClass  = params[1];
+const secondTag   = params[2].toUpperCase();  // Condition 1
+const secondClass = params[3];
+const thirdTag    = params[4].toUpperCase();  // Condition 2
+const targetStr   = params[5];
+filterString += "Item(" + firstTag + ", " + firstClass + ") with C1(" + secondTag + ", "
++ secondClass + ") and C2(" + thirdTag + ", " + targetStr + ") && ";
+// search
+const elements = document.getElementsByTagName(firstTag);
+for (let j = elements.length - 1; j >= 0; j--) {
+if (elements[j].classList.contains(firstClass)) {
+var needRemove = false;
+if(secondTag.length > 0){
+needRemove = true;
+const secondElements = elements[j].getElementsByTagName(secondTag);
+for (let k = secondElements.length - 1; k >= 0; k--) {
+if (secondElements[k].classList.contains(secondClass)) {
+needRemove = false;
+break;
+}
+}
+}
+if(thirdTag.length > 0 && !needRemove){
+needRemove = true;
+const thirdElements = elements[j].getElementsByTagName(thirdTag);
+for (let k = thirdElements.length - 1; k >= 0; k--) {
+if (thirdElements[k].outerHTML.includes(targetStr)) {
+needRemove = false;
+break;
+}
+}
+}
+if(needRemove){
+elements[j].parentNode.removeChild(elements[j]);
+}
+}
+}
+}
+if(filterString.length > 0){
+filterString = filterString.substring(0, filterString.length - 4);
+document.getElementById('tr_filter_string').style.display = '';
+document.getElementById('td_filter_string').innerHTML = filterString;
+document.getElementById('td_filter_string').style.color = '#ff00ff';
+}
+var openFuc = urlParams.getAll('ShowFunCov');
+if(openFuc.length > 0){
+if(openFuc[0] == "1" || openFuc[0] == "true"){
+openFunctionalDetailModal();
+}
+}
 });
 
 {% endblock %}
@@ -129,21 +129,21 @@ document.addEventListener("DOMContentLoaded", function() {
     {% set hints_b = coverages.functional.bin_num_hints %}
 
     {% if total_g != 0 %}
-      {% set rate_g = hints_g / total_g * 100 %}
+    {% set rate_g = hints_g / total_g * 100 %}
     {% else %}
-      {% set rate_g = 0 %}
+    {% set rate_g = 0 %}
     {% endif %}
 
     {% if total_p != 0 %}
-      {% set rate_p = hints_p / total_p * 100 %}
+    {% set rate_p = hints_p / total_p * 100 %}
     {% else %}
-      {% set rate_p = 0 %}
+    {% set rate_p = 0 %}
     {% endif %}
 
     {% if total_b != 0 %}
-      {% set rate_b = hints_b / total_b * 100 %}
+    {% set rate_b = hints_b / total_b * 100 %}
     {% else %}
-      {% set rate_b = 0 %}
+    {% set rate_b = 0 %}
     {% endif %}
 
     {% set fc_grate = coverages.functional.grate %}
@@ -155,115 +155,138 @@ document.addEventListener("DOMContentLoaded", function() {
     </div>
     <ul style="height: 56vh; overflow: auto; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding-top: 10px; padding-right:10px; margin: 0;">
       {% for group in coverages.functional.groups %}
-      <li class="group_name">
-        <span>Group: {{group.name}}</span>
-        {% if group.hinted %}
-        <span class="{{group.name}}" style="float: right; color: green;">Passed</span>
-        {% else %}
-        <span class="{{group.name}}" style="float: right; color: red;">Failed</span>
-        {% endif %}
-      </li>
-
-      <details class="funs-detail funs-detail-back">
-        <summary>
+      <li>
+        <div class="point_name">
+          <details class="funs-group">
+            <summary>
           <span class="title file-title">
             <span class="{% if group.point_functions|length == 0 %}highlight{% endif %}">
-              Functions
+              <span>Group: {{group.name}}</span>
             </span>
           </span>
-        </summary>
-        <div>
-          {% for func in group.point_functions %}
-          {% set parts = func.split('.') %}
-          {% if parts|length > 2 %}
-          {% set middle = parts[1:-2] %}
-          {% set second_last = parts[-2] + '.py' %}
-          {% set last = parts[-1] %}
-          {% set new_func = (middle + [second_last]) | join('/') + '/' + last %}
+            </summary>
+            <div>
+              {% for func in group.point_functions %}
+              <div class="funs-name" title="{{func}}">{{ func }}</div>
+              {% endfor %}
+            </div>
+          </details>
+          {% if group.hinted %}
+          <span class="{{group.name}}" style="float: right; color: green;">Passed</span>
           {% else %}
-          {% set new_func = func %}
+          <span class="{{group.name}}" style="float: right; color: red;">Failed</span>
           {% endif %}
-          <div class="funs-name" title="{{new_func}}">{{ new_func }}</div>
-          {% endfor %}
         </div>
-      </details>
+      </li>
 
       <ul class="group_name">
-      {% for point in group.points %}
-        <li class="point_name">
-            {% if point.once %}
-            <span style="color: brown; font-weight: bold;">*</span>
-            {% endif %}
-          Point: {{point.name}} {% if point.hinted %}
-            <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
-            <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}</li>
+        {% for point in group.points %}
         <!--查找point.name对应的项-->
         {% set target_point_name = point.name %}
         {% set fp = namespace(found_point=none) %}
         {% for point in group.points %}
-          {% if point.name == target_point_name %}
-            {% set fp.found_point = point %}
-          {% endif %}
+        {% if point.name == target_point_name %}
+        {% set fp.found_point = point %}
+        {% endif %}
         {% endfor %}
         <!--去重functions-->
         {% if fp.found_point and fp.found_point.functions %}
-          {% set all_values = [] %}
-          {% for value_list in fp.found_point.functions.values() %}
-            {% for value in value_list %}
-              {% set _ = all_values.append(value) %}
-            {% endfor %}
-          {% endfor %}
-          {% set uv = namespace(unique_values = []) %}
-          {% set seen_values = [] %}
-          {% for value in all_values %}
-            {% if value not in seen_values %}
-              {% set _ = seen_values.append(value) %}
-              {% set _ = uv.unique_values.append(value) %}
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-        <details class="funs-detail funs-detail-back">
-          <summary>
-            <span class="title file-title">
-              <span class="{% if uv.unique_values|length == 0 %}highlight{% endif %}">
-                Functions
-              </span>
-            </span>
-          </summary>
-          <div>
-            {% for func in uv.unique_values %}
-            {% set parts = func.split('.') %}
-            {% if parts|length > 2 %}
-            {% set middle = parts[1:-2] %}
-            {% set second_last = parts[-2] + '.py' %}
-            {% set last = parts[-1] %}
-            {% set new_func = (middle + [second_last]) | join('/') + '/' + last %}
-            {% else %}
-            {% set new_func = func %}
-            {% endif %}
-            <div class="funs-name" title="{{new_func}}">{{ new_func }}</div>
-            {% endfor %}
-          </div>
-        </details>
-
-        <ul class="point_name {%if point.hinted%}pass{% else %}fail{% endif %}">
-        {% for bin in point.bins %}
-          <li class="bin_name {%if point.hinted%}pass{% else %}fail{% endif %}">Bin: {{bin.name}} {% if total_b != 0 %}
-              {% if bin.hints != 0 %}
-                <span style="float: right; color: green;">{{bin.hints}}</span>
-              {% else %}
-                <span style="float: right; color: red;">{{bin.hints}}</span>
-              {% endif %}
-            {% else %}
-              <span style="float: right; color: red;">0</span>
-            {% endif %}
-          </li>
+        {% set all_values = [] %}
+        {% for value_list in fp.found_point.functions.values() %}
+        {% for value in value_list %}
+        {% set _ = all_values.append(value) %}
         {% endfor %}
+        {% endfor %}
+        {% set uv = namespace(unique_values = []) %}
+        {% set seen_values = [] %}
+        {% for value in all_values %}
+        {% if value not in seen_values %}
+        {% set _ = seen_values.append(value) %}
+        {% set _ = uv.unique_values.append(value) %}
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+        <li>
+          <div class="point_name">
+            <details class="funs-group">
+              <summary>
+                <span class="title file-title">
+                  <span class="{% if uv.unique_values|length == 0 %}highlight{% endif %}">
+                    {% if point.once %}
+                    <span style="color: brown; font-weight: bold;">*</span>
+                    {% endif %}
+                    Point: {{point.name}}
+                  </span>
+                </span>
+              </summary>
+              <div>
+                {% for func in uv.unique_values %}
+                <div class="funs-name" title="{{func}}">{{ func }}</div>
+                {% endfor %}
+              </div>
+            </details>
+            {% if point.hinted %}
+            <span class="{{group.name}}" style="float: right; color: green;">Passed</span>{% else %}
+            <span class="{{group.name}}" style="float: right; color: red;">Failed</span> {% endif %}
+          </div>
+        </li>
+
+        <ul class="{%if point.hinted%}pass{% else %}fail{% endif %}">
+          {% for bin in point.bins %}
+          {% set bin_func_mapping = [] %}
+          {% set bins_with_functions = [] %}
+          {% if bin.name in point.functions %}
+          {% set _ = bin_func_mapping.append({bin.name: point.functions[bin.name]}) %}
+          {% set _ = bins_with_functions.append(bin.name) %}
+          {% else %}
+          {% set name_parts = bin.name.split('_') %}
+          {% if name_parts|length > 1 %}
+          {% set wildcard_key = name_parts[0] + '_*' %}
+          {% if wildcard_key in point.functions %}
+          {% set _ = bin_func_mapping.append({bin.name: point.functions[wildcard_key]}) %}
+          {% set _ = bins_with_functions.append(bin.name) %}
+          {% endif %}
+          {% endif %}
+          {% endif %}
+          <li class="{%if point.hinted%}pass{% else %}fail{% endif %}">
+            <div class="point_name">
+              <details class="funs-group">
+                <summary>
+                <span class="title file-title">
+                  <span class="{% if bin.name not in bins_with_functions %}highlight{% endif %}">
+                    Bin: {{bin.name}}
+                  </span>
+                </span>
+                </summary>
+                <div>
+                  {% for mapping in bin_func_mapping %}
+                  {% for bin_name, func_list in mapping.items() %}
+                  {% if bin.name == bin_name %}
+                  {% for func in func_list %}
+                  <div class="funs-name" title="{{func}}">{{ func }}</div>
+                  {% endfor %}
+                  {% endif %}
+                  {% endfor %}
+                  {% endfor %}
+                </div>
+              </details>
+              {% if total_b != 0 %}
+              {% if bin.hints != 0 %}
+              <span style="float: right; color: green;">{{bin.hints}}</span>
+              {% else %}
+              <span style="float: right; color: red;">{{bin.hints}}</span>
+              {% endif %}
+              {% else %}
+              <span style="float: right; color: red;">0</span>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
         </ul>
-      {% endfor %}
+        {% endfor %}
       </ul>
       {% endfor %}
-    {% endif %}
+      {% endif %}
     </ul>
   </div>
   {% if show_once %}
@@ -296,7 +319,7 @@ document.addEventListener("DOMContentLoaded", function() {
             {% set line_rate = (coverages.line.hints / coverages.line.total * 100) %}
             {% endif %}
             <td>
-            <span style="font-weight: bold; color: {% if line_rate < coverages.line.grate %} red {% else %} green {% endif %};">{{ line_rate|round(2) }}%</span>
+              <span style="font-weight: bold; color: {% if line_rate < coverages.line.grate %} red {% else %} green {% endif %};">{{ line_rate|round(2) }}%</span>
             </td>
             <td>{{ coverages.line.hints }}</td>
             <td>{{ coverages.line.total }}</td>
@@ -329,7 +352,7 @@ document.addEventListener("DOMContentLoaded", function() {
             {% set point_rate = (coverages.functional.point_num_hints / coverages.functional.point_num_total * 100) %}
             {% endif %}
             <td>
-            <span style="font-weight: bold; color: {% if point_rate < coverages.functional.grate %} red {% else %} green {% endif %};">{{ point_rate|round(2) }}%</span>
+              <span style="font-weight: bold; color: {% if point_rate < coverages.functional.grate %} red {% else %} green {% endif %};">{{ point_rate|round(2) }}%</span>
             </td>
             <td>{{ coverages.functional.point_num_hints }}</td>
             <td>{{ coverages.functional.point_num_total }}</td>
@@ -351,7 +374,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             {% set tp = namespace(total_points = 0) %}
             {% for group in coverages.functional.groups %}
-              {% set tp.total_points = tp.total_points + group.points|length %}
+            {% set tp.total_points = tp.total_points + group.points|length %}
             {% endfor %}
 
             <td>

@@ -122,20 +122,45 @@
     {% if test.status.category != 'skipped' %}
     {% set c.counter = c.counter + 1 %}
     {% set name = test.item.nodeid.split('::')[1:]|join('::') %}
-    {% set funcname, _, params = name.partition('[') %}
-    {% if funcname not in test_items %}
-    {{ test_items.append(funcname) or "" }}
+    {% if test.item.nodeid not in test_items %}
+    {{ test_items.append(test.item.nodeid) or "" }}
     {% endif %}
     {% endif %}
     {% endfor %}
+
     <!--覆盖point的函数个数-->
     {% set uf = namespace(unique_functions = {}) %}
     {% for group in coverages.functional.groups %}
     {% for point in group.points %}
     {% for func_list in point.functions.values() %}
     {% for func in func_list %}
-    {% if func not in uf.unique_functions and func in test_items %}
-    {% set _ = uf.unique_functions.update({func: true}) %}
+    {% set processed_func = func %}
+    {% if '::' in func %}
+    {% if ':' in func %}
+    {% set before_colon = func.split(':', 1)[0] %}
+    {% else %}
+    {% set before_colon = func.split('::', 1)[0] %}
+    {% endif %}
+    {% set after_double_colon = func.split('::', 1)[1] %}
+    {% set processed_func = before_colon ~ '::' ~ after_double_colon %}
+    {% elif '.' in func and '.py' not in func %}
+    {% set parts = func.split('.') %}
+    {% if parts|length >= 2 %}
+    {% set path_part = parts[:-1]|join('/') ~ '.py' %}
+    {% set func_part = parts[-1] %}
+    {% set processed_func = path_part ~ '::' ~ func_part %}
+    {% else %}
+    {% set processed_func = func %}
+    {% endif %}
+    {% else %}
+    {% set processed_func = func %}
+    {% endif %}
+    {% if processed_func not in uf.unique_functions %}
+    {% for item in test_items %}
+    {% if item in processed_func %}
+    {% set _ = uf.unique_functions.update({processed_func: true}) %}
+    {% endif %}
+    {% endfor %}
     {% endif %}
     {% endfor %}
     {% endfor %}
@@ -144,14 +169,14 @@
     <div style="margin-bottom: 1rem; margin-left: 0.5rem">
       <span class="fspath" style="font-weight: bold">Marked Functions: </span>
       <span style="font-weight: bold;
-    {% if c.counter != 0 and (uf.unique_functions.keys()|length / c.counter * 100) < 100 %}
-      color: red;
-    {% endif %}">
-    {{ uf.unique_functions.keys()|length }}/{{ c.counter }}
-    {% if c.counter != 0 %}
-      ({{ (uf.unique_functions.keys()|length / c.counter * 100)|round(2) }}%)
-    {% endif %}
-  </span>
+        {% if c.counter != 0 and (uf.unique_functions.keys()|length / c.counter * 100) < 100 %}
+          color: red;
+        {% endif %}">
+        {{ uf.unique_functions.keys()|length }}/{{ c.counter }}
+        {% if c.counter != 0 %}
+          ({{ (uf.unique_functions.keys()|length / c.counter * 100)|round(2) }}%)
+        {% endif %}
+      </span>
     </div>
     <!--每个文件对应几个point-->
     {% set path_to_point_names = {} %}
@@ -164,18 +189,26 @@
     {% if '::' in func %}
     {# 格式1: 文件路径格式 /path/to/file.py::function_name #}
     {% set parts = func.split('::') %}
-    {% set path = parts[0] %}
+    {% set path = parts[0].split(':')[0] %}
     {% set func_name = parts[-1] %}
     {% else %}
     {# 格式2: 模块路径格式 module.submodule.function_name #}
     {% set parts = func.split('.') %}
     {% if parts|length >= 3 %}
-    {% set path = parts[1:-1]|join('/') + '.py' %}
+    {% set path = parts[0:-1]|join('/') + '.py' %}
     {% set func_name = parts[-1] %}
     {% endif %}
     {% endif %}
 
     {% if path and func_name %}
+    {% set su = namespace(should_update=false) %}
+    {% for item in test_items %}
+    {% if item in path + '::' + func_name %}
+    {% set su.should_update = true %}
+    {% endif %}
+    {% endfor %}
+
+    {% if su.should_update %}
     {# 更新 path_to_point_names #}
     {% if not path_to_point_names.get(path) %}
     {% set path_to_point_names = path_to_point_names.update({path: [group.name + ':' + point.name]}) %}
@@ -186,9 +219,10 @@
     }) %}
     {% endif %}
     {% endif %}
+    {% endif %}
 
     {# 更新 func_to_point_names #}
-    {% set func_key = path + '::' + func_name %}
+    {% set func_key = path + ':' + func_name %}
     {% if not func_to_point_names.get(func_key) %}
     {% set func_to_point_names = func_to_point_names.update({func_key: [group.name + ':' + point.name]}) %}
     {% else %}
@@ -221,8 +255,8 @@
             {%- endfor %}
             </span>
           {% set pc = namespace(point_count = 0) %}
-          {% for path,point_names  in path_to_point_names.items() %}
-          {% if path == first_item.nodeid.split('::')|first %}
+          {% for path,point_names in path_to_point_names.items() %}
+          {% if first_item.nodeid.split('::')|first in path %}
           {% set pc.point_count = point_names|length %}
           {% endif %}
           {% endfor %}
