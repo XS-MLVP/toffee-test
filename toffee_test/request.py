@@ -1,4 +1,5 @@
 import os
+from zlib import crc32
 
 from .reporter import set_func_coverage
 from .reporter import set_line_coverage
@@ -9,7 +10,6 @@ class ToffeeRequest:
         self.dut = None
         self.args = None
         self.request = request
-        self.request_name = None
         self.cov_groups = []
 
         self.waveform_filename = None
@@ -66,12 +66,16 @@ class ToffeeRequest:
 
         if self.__need_report():
             report_dir = os.path.dirname(self.request.config.option.report[0])
+            request_name = self.request.node.name
+            path_bytes = str(self.request.path).encode("utf-8")
+            path_hash = format(crc32(path_bytes), 'x')
+            export_filename = "_".join((dut_cls.__name__, request_name, path_hash))
 
             self.waveform_filename = (
-                f"{report_dir}/{dut_cls.__name__}_{self.request_name}.fst"
+                f"{report_dir}/{export_filename}.fst"
             )
             self.coverage_filename = (
-                f"{report_dir}/{dut_cls.__name__}_{self.request_name}.dat"
+                f"{report_dir}/{export_filename}.dat"
             )
 
             if waveform_filename is not None:

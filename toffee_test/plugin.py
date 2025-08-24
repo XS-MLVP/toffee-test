@@ -156,9 +156,7 @@ from .request import ToffeeRequest
 @pytest.fixture()
 def toffee_request(request):
     request_info = ToffeeRequest(request)
-    request_info.request_name = (
-        str(request._pyfuncitem).strip("<").strip(">").split(" ")[-1]
-    )
+
     yield request_info
 
     request_info.finish(request)
