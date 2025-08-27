@@ -111,12 +111,7 @@ def __update_func_coverage__(__func_coverage__):
                                 result[key][old_keys[data["name"]]] = merge_dicts(
                                     result[key][old_keys[data["name"]]], data
                                 )
-                    elif key == "functions":
-                        for k, v in value.items():
-                            if k in result[key]:
-                                result[key][k] = list(set(result[key][k] + v))
-                            else:
-                                result[key][k] = v
+                    else: # Normal list merge, use unique items
                         result[key] = list(set(result[key] + value))
                 elif isinstance(result[key], bool) and isinstance(value, bool):
                     if key == "has_once":
