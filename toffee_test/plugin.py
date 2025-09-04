@@ -54,7 +54,7 @@ def pytest_runtest_setup(item):
     toffee_tags_process(item)
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser):
     group = parser.getgroup("reporter")
     group.addoption(
         "--toffee-report",
@@ -82,12 +82,18 @@ def pytest_addoption(parser):
         "--custom-key-value",
         action="store",
         default=None,
-        help="Custom key value pair. dict wtih base64 encoded",
+        help="Custom key value pair. dict wtih base64 encoded.",
     )
 
+    group.addoption(
+        "--no-func-cov",
+        action="store_true",
+        default=False,
+        help="Run test without functional coverage.",
+    )
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config):
     config.addinivalue_line(
         "markers", "mlvp_async: mark test to run with toffee's event loop"
     )
