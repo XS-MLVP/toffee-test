@@ -4,9 +4,9 @@ import subprocess
 import copy
 import json
 import base64
-import itertools
-import tempfile
 from typing import List, Iterable
+
+from .uncovered import verilator_coverage_miss
 
 
 def exe_cmd(cmd):
@@ -31,9 +31,40 @@ def parse_lines(text: str):
     return -1, -1
 
 
+def merge_verilator_coverage(coverage_files: list[str]) -> list[tuple[str, int]]:
+    from collections import Counter
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    def _count_verilator_coverage_hit(path: str) -> Counter:
+        verilator_coverage_dat = Counter()
+        with open(path, "r") as f:
+            first_line = f.readline().strip()
+            if first_line != r"# SystemC::Coverage-3":
+                # Invalid verilator coverage file
+                return verilator_coverage_dat
+            for line in f:
+                line = line.strip()
+                l = line.find(" ")
+                r = line.rfind(" ")
+                entry = line[l + 1:r]
+                hit = line[r + 1:]
+                verilator_coverage_dat[entry] += int(hit)
+            return verilator_coverage_dat
+
+    c = Counter()
+    with ProcessPoolExecutor() as executor:
+        futures = {executor.submit(_count_verilator_coverage_hit, f) for f in coverage_files}
+        for future in as_completed(futures):
+            res = future.result()
+            c.update(res)
+    res = sorted(c.items())
+    return res
+
+
 def convert_line_coverage(line_coverage_list, output_dir):
+    from pathlib import Path
     assert isinstance(line_coverage_list, list), "Invalid line coverage list"
-    coverage_info_list = []
+    coverage_dat_list: list[str] = []
+    ignore_files: list[str] = []
     final_ignore_info = []
     for ldata in line_coverage_list:
         fdat = ldata["data"]
@@ -42,19 +73,16 @@ def convert_line_coverage(line_coverage_list, output_dir):
             fign = [fign]
         assert isinstance(fign, list), f"Invalid data file: '{fign}'"
         assert os.path.exists(fdat), f"Invalid data file: '{fdat}'"
-        su, so, se = exe_cmd(["verilator_coverage  -write-info", fdat + ".info", fdat])
-        assert su, f"Failed to convert line coverage({fdat}): {se}"
         ignore_text = []
         # find all .ignore files
         ignore_file_list = []
         for f in fign:
-            if os.path.isdir(f):
-                for root, _, files in os.walk(f):
-                    for file in files:
-                        if file.endswith(".ignore"):
-                            ignore_file_list.append(os.path.join(root, file))
+            path = Path(f)
+            assert path.exists(), f"Ignore file/path does not exist: '{f}'"
+            if path.is_dir():
+                ignores = path.rglob("*.ignore")
+                ignore_file_list.extend(ignores)
             else:
-                assert os.path.exists(f), f"Not find ignore file: '{f}'"
                 ignore_file_list.append(f)
         for ignore_file in ignore_file_list:
             for i, ln in enumerate(open(ignore_file).readlines()):
@@ -64,67 +92,54 @@ def convert_line_coverage(line_coverage_list, output_dir):
                 for c in ["'", "\""]:
                     assert c not in ln, f"Invalid line number({i}): '{ln}'"
                 ignore_text.append(f"\'{ln}\'")
-        su, so, se = exe_cmd(
-            ["lcov", "--remove", fdat + ".info", " ".join(ignore_text), "--output-file", fdat + ".info"]
-        )
-        assert su, f"Failed to remove line with file: '{ignore_file_list}', exception: {se}"
-        coverage_info_list.append(fdat + ".info")
-        final_ignore_info.append([fdat, copy.deepcopy(ignore_file_list)])
+        coverage_dat_list.append(fdat)
+        ignore_files.extend(ignore_text)
+        final_ignore_info.append((fdat, copy.deepcopy(ignore_file_list)))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    merged_coverage = merge_verilator_coverage(coverage_dat_list)
+    verilator_coverage_miss(merged_coverage, os.path.join(output_dir, "coverage.json"))
     merged_info = os.path.join(output_dir, "merged.info")
-    lcov_merge_and_del(coverage_info_list, merged_info)
+    lcov_remove_ingore(ignore_files, merged_info)
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
     return parse_lines(so), final_ignore_info
 
 
-def lcov_merge_and_del(list_to_merge: List[str], out_file: str, max_kbytes=10) -> None:
-    def create_temp_file() -> str:
-        _, path = tempfile.mkstemp(prefix="merge_", suffix=".info")
-        return path
+def verilator_coverage_to_lcov(merged_coverage: list[tuple[str, int]], outfile: str):
+    outfile_dat = ".".join((outfile, "dat"))
+    with open(outfile_dat, "w", encoding="utf-8") as f:
+        f.write(r"# SystemC::Coverage-3")
+        for e, h in merged_coverage:
+            f.write(f"C {e} {h}\n")
+    cmd = [
+        "verilator_coverage",
+        "-write-info", outfile, outfile_dat,
+    ]
+    subprocess.run(cmd, stdout=subprocess.PIPE, shell=False, check=True)
 
+
+def lcov_remove_ingore(ignore_list: List[str], out_file: str, max_kbytes=10) -> None:
     max_bytes = max_kbytes * 1024
-    cmd_list = ["lcov", "-o", out_file, "-a", out_file]
+    cmd_list = ["lcov", "-o", out_file, "-r", out_file]
     cmd_len = len(" ".join(cmd_list)) + 1
-    temp_total_size = cmd_len
-    temp_files = []
+    to_be_ignored = []
     total_size = cmd_len
-    raw = 0
-    cooking = 0
-    for cooking in range(len(list_to_merge)):
-        f = list_to_merge[cooking]
+    for f in ignore_list:
         f_len = 3 + len(f)  # The length of '-a ' is 3
         if f_len + total_size > max_bytes:
-            temp = create_temp_file()  # Create temp file
-            temp_files.append(temp)
-            temp_total_size += len(temp) + 3
-            _lcov_merge(itertools.islice(list_to_merge, raw, cooking), temp)  # Merge into the temp
+            _lcov_merge(to_be_ignored, out_file)  # Merge into the temp
             total_size = cmd_len
-            raw = cooking
+            to_be_ignored.clear()
         total_size += f_len
+        to_be_ignored.append(f)
     # There are still unmerged files here
-    temp = create_temp_file()
-    temp_files.append(temp)
-    _lcov_merge(itertools.islice(list_to_merge, raw, cooking + 1), temp)
-    # Delete .dat.info
-    for f in list_to_merge:
-        os.remove(f)
-    # If the number of temp files is also huge
-    if temp_total_size > max_bytes:
-        lcov_merge_and_del(temp_files, out_file)
-    else:
-        _lcov_merge(temp_files, out_file)
-    # Clean the temps
-    for f in temp_files:
-        os.remove(f)
+    _lcov_merge(to_be_ignored, out_file)
 
 
 def _lcov_merge(list_to_merge: Iterable[str], out_file: str) -> None:
-    cmd = ["lcov", "-o", out_file]
-    for f in list_to_merge:
-        cmd.append("-a")
-        cmd.append(f)
+    cmd = ["lcov", "-o", out_file, "-r", out_file]
+    cmd.extend(list_to_merge)
     subprocess.run(cmd, stdout=subprocess.PIPE, shell=False, check=True)
 
 
