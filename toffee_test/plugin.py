@@ -15,7 +15,6 @@ from .utils import base64_decode
 from .utils import get_toffee_custom_key_value
 from .utils import set_toffee_custom_key_value
 
-
 """
 toffee plugin
 """
@@ -92,6 +91,7 @@ def pytest_addoption(parser: pytest.Parser):
         help="Run test without functional coverage.",
     )
 
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
     config.addinivalue_line(
@@ -103,12 +103,19 @@ def pytest_configure(config: pytest.Config):
         config.option.template_dir = [get_template_dir()]
 
         report_name = config.getoption("--report-name")
-        if report_name is None:
+
+        if hasattr(config, "workerinput"):
+            report_name = config.workerinput["report_name"]
+        elif report_name is None:
             report_name = get_default_report_name()
+            config.option.report_name = report_name
 
         report_dir = config.getoption("--report-dir")
-        if report_dir is None:
+        if hasattr(config, "workerinput"):
+            report_dir = config.workerinput["report_dir"]
+        elif report_dir is None:
             report_dir = "reports"
+            config.option.report_dir = report_dir
         report_name = os.path.join(report_dir, report_name)
 
         config.option.report = [report_name]
@@ -124,6 +131,12 @@ def pytest_configure(config: pytest.Config):
 
     if "asyncio_default_fixture_loop_scope" not in config._inicache:
         config._inicache["asyncio_default_fixture_loop_scope"] = "function"
+
+
+@pytest.hookimpl()
+def pytest_configure_node(node):
+    node.workerinput["report_name"] = node.config.option.report_name
+    node.workerinput["report_dir"] = node.config.option.report_dir
 
 
 """
@@ -157,6 +170,13 @@ def pytest_pyfunc_call(pyfuncitem):
 
 
 from .request import ToffeeRequest
+
+
+@pytest.fixture()
+def toffee_test_worker(request) -> str:
+    if hasattr(request.config, "workerinput"):
+        return request.config.workerinput["workerid"]
+    return "gw0"
 
 
 @pytest.fixture()
