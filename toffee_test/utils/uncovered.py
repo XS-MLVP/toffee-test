@@ -60,7 +60,7 @@ def verilator_coverage_miss(merged_coverage: list[tuple[str, int]], out_file: st
     # Parse missing coverage
     coverages = [_parse_line(c) for c in miss_coverage]
     # Parse file
-    miss_tree: dict[str, dict[str, Union[set[int], list[Union[str, int]]]]] = {}
+    miss_tree: dict[str, dict[str, dict[str, Union[set[int], list[str]]]]] = {}
     for c in coverages:
         # Lookup path
         path = c.popleft()[-1]
@@ -71,40 +71,53 @@ def verilator_coverage_miss(merged_coverage: list[tuple[str, int]], out_file: st
         # The second level of miss_tree is module name
         hierarchy = c.pop()[-1]
         module_name = hierarchy[hierarchy.rfind(".") + 1:]
+        miss_tree[path].setdefault(module_name, dict())
+        # The third level of miss_tree is coverage metric
         p = _set_coverage_point(c)
-        if module_name not in miss_tree[path]:
-            miss_tree[path][module_name] = {p.line}
-        elif p.block is not None and isinstance(p.block, range):
-            miss_tree[path][module_name].update(p.block)
+        miss_tree[path][module_name].setdefault(p.type, set())
+        third = miss_tree[path][module_name][p.type]
+        if p.block is not None and isinstance(p.block, range):
+            third.update(p.block)
         else:
-            miss_tree[path][module_name].add(p.line)
+            third.add(p.line)
 
+    miss_schema = {
+        "file_path": {"module": {"line": ["line"], "toggle": ["line"], "branch": ["line"], "expr": ["line"]}},
+    }
     for file in miss_tree:
         for module in miss_tree[file]:
-            sorted_line = sorted(miss_tree[file][module])
-            final_line: list[Union[int, str]] = []
-            i = 0
-            while i < len(sorted_line):
-                l = sorted_line[i]
-                j = i
-                while j + 1 < len(sorted_line) and sorted_line[j + 1] == sorted_line[j] + 1:
-                    j += 1
-                if i == j:
-                    final_line.append(l)
-                else:
-                    r = sorted_line[j]
-                    final_line.append(f"{l}-{r}")
-                i = j + 1
-            miss_tree[file][module] = final_line
+            for metric in miss_tree[file][module]:
+                sorted_line = sorted(miss_tree[file][module][metric])
+                final_line: list[Union[int, str]] = []
+                i = 0
+                while i < len(sorted_line):
+                    l = sorted_line[i]
+                    j = i
+                    while j + 1 < len(sorted_line) and sorted_line[j + 1] == sorted_line[j] + 1:
+                        j += 1
+                    if i == j:
+                        r = l
+                    else:
+                        r = sorted_line[j]
+                    final_line.append("%d-%d" % (l, r))
+                    i = j + 1
+                miss_tree[file][module][metric] = final_line
+            for metric in miss_schema["file_path"]["module"]:
+                if metric not in miss_tree[file][module]:
+                    miss_tree[file][module][metric] = []
 
-    structure = {"file_path": {"module": ["line"]}}
-    desc = ""
+    desc = f"Code coverage summary. `data` field contains uncovered lines"
     empty_coverage = {
         "description": desc,
-        "miss/total": f"{len(miss_coverage)}/{len(merged_coverage)}",
         "simulator": "verilator",
-        "structure": structure,
-        "uncovered": miss_tree,
+        "overview": {
+            "schema": ["total_line", "miss_line"],
+            "data": [len(merged_coverage), len(miss_coverage)],
+        },
+        "uncovered": {
+            "schema": miss_schema,
+            "data": miss_tree,
+        }
     }
     # Export json
     import json

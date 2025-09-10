@@ -5,6 +5,7 @@ import copy
 import json
 import base64
 from typing import List, Iterable
+from collections import Counter
 
 from .uncovered import verilator_coverage_miss
 
@@ -31,24 +32,25 @@ def parse_lines(text: str):
     return -1, -1
 
 
-def merge_verilator_coverage(coverage_files: list[str]) -> list[tuple[str, int]]:
-    from collections import Counter
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-    def _count_verilator_coverage_hit(path: str) -> Counter:
-        verilator_coverage_dat = Counter()
-        with open(path, "r") as f:
-            first_line = f.readline().strip()
-            if first_line != r"# SystemC::Coverage-3":
-                # Invalid verilator coverage file
-                return verilator_coverage_dat
-            for line in f:
-                line = line.strip()
-                l = line.find(" ")
-                r = line.rfind(" ")
-                entry = line[l + 1:r]
-                hit = line[r + 1:]
-                verilator_coverage_dat[entry] += int(hit)
+def _count_verilator_coverage_hit(path: str) -> Counter:
+    verilator_coverage_dat = Counter()
+    with open(path, "r") as f:
+        first_line = f.readline().strip()
+        if first_line != r"# SystemC::Coverage-3":
+            # Invalid verilator coverage file
             return verilator_coverage_dat
+        for line in f:
+            line = line.strip()
+            l = line.find(" ")
+            r = line.rfind(" ")
+            entry = line[l + 1:r]
+            hit = line[r + 1:]
+            verilator_coverage_dat[entry] += int(hit)
+        return verilator_coverage_dat
+
+
+def merge_verilator_coverage(coverage_files: list[str]) -> list[tuple[str, int]]:
+    from concurrent.futures import ProcessPoolExecutor, as_completed
 
     c = Counter()
     with ProcessPoolExecutor() as executor:
@@ -100,6 +102,7 @@ def convert_line_coverage(line_coverage_list, output_dir):
     merged_coverage = merge_verilator_coverage(coverage_dat_list)
     verilator_coverage_miss(merged_coverage, os.path.join(output_dir, "coverage.json"))
     merged_info = os.path.join(output_dir, "merged.info")
+    verilator_coverage_to_lcov(merged_coverage, merged_info)
     lcov_remove_ingore(ignore_files, merged_info)
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
@@ -109,7 +112,7 @@ def convert_line_coverage(line_coverage_list, output_dir):
 def verilator_coverage_to_lcov(merged_coverage: list[tuple[str, int]], outfile: str):
     outfile_dat = ".".join((outfile, "dat"))
     with open(outfile_dat, "w", encoding="utf-8") as f:
-        f.write(r"# SystemC::Coverage-3")
+        f.write("# SystemC::Coverage-3\n")
         for e, h in merged_coverage:
             f.write(f"C {e} {h}\n")
     cmd = [
@@ -120,6 +123,8 @@ def verilator_coverage_to_lcov(merged_coverage: list[tuple[str, int]], outfile: 
 
 
 def lcov_remove_ingore(ignore_list: List[str], out_file: str, max_kbytes=10) -> None:
+    if not ignore_list:
+        return
     max_bytes = max_kbytes * 1024
     cmd_list = ["lcov", "-o", out_file, "-r", out_file]
     cmd_len = len(" ".join(cmd_list)) + 1
@@ -128,16 +133,16 @@ def lcov_remove_ingore(ignore_list: List[str], out_file: str, max_kbytes=10) -> 
     for f in ignore_list:
         f_len = 3 + len(f)  # The length of '-a ' is 3
         if f_len + total_size > max_bytes:
-            _lcov_merge(to_be_ignored, out_file)  # Merge into the temp
+            _lcov_remove(to_be_ignored, out_file)  # Merge into the temp
             total_size = cmd_len
             to_be_ignored.clear()
         total_size += f_len
         to_be_ignored.append(f)
     # There are still unmerged files here
-    _lcov_merge(to_be_ignored, out_file)
+    _lcov_remove(to_be_ignored, out_file)
 
 
-def _lcov_merge(list_to_merge: Iterable[str], out_file: str) -> None:
+def _lcov_remove(list_to_merge: Iterable[str], out_file: str) -> None:
     cmd = ["lcov", "-o", out_file, "-r", out_file]
     cmd.extend(list_to_merge)
     subprocess.run(cmd, stdout=subprocess.PIPE, shell=False, check=True)
