@@ -288,7 +288,7 @@ def set_func_coverage(request, g):
             } for g in request.node.__coverage_group__])
 
 
-def set_line_coverage(request, datfile, ignore=[]):
+def set_line_coverage(request, datfile, ignore: list[str]):
     assert isinstance(datfile, str), "datfile should be a string"
     request.node.__line_coverage__ = json.dumps({"datfile":datfile, "ignore": ignore})
     if request.scope == 'module':
