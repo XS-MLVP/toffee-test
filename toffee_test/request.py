@@ -1,4 +1,5 @@
 import os
+from collections.abc import Iterable
 from zlib import crc32
 
 from .reporter import set_func_coverage
@@ -12,6 +13,7 @@ class ToffeeRequest:
         self.args = None
         self.request = request
         self.cov_groups = []
+        self.ignores = []
 
         self.waveform_filename = None
         self.coverage_filename = None
@@ -52,6 +54,7 @@ class ToffeeRequest:
             clock_name=None,
             waveform_filename=None,
             coverage_filename=None,
+            ignore_patterns: Iterable[str] = None,
             *dut_extra_args,
             **dut_extra_kwargs,
     ):
@@ -63,6 +66,27 @@ class ToffeeRequest:
             clock_name: The clock pin name.
             waveform_filename: The waveform filename. If not set, it will be auto-generated.
             coverage_filename: The coverage filename. If not set, it will be auto-generated.
+            ignore_patterns (Iterable[str] | None): A list of strings that define ignore rules.
+                Each string in the list is resolved according to the following logic, in order:
+
+                1.  **As an ``.ignore`` file**: If the string is a path to an existing file
+                    ending with the ``.ignore`` suffix, its contents are read as patterns.
+
+                2.  **As a directory**: If the string is a path to an existing directory,
+                    the function will find and read all files ending with ``.ignore``
+                    within that directory.
+
+                3.  **As a direct pattern**: If neither of the above conditions are met,
+                    the string is treated as a literal glob pattern (this includes
+                    non-existent paths).
+
+                For example, given the list ``['config/', 'project.ignore', '*.tmp']``:
+                - It first checks if ``config/`` is an existing directory and, if so, loads any ``.ignore`` files inside it.
+                - It then checks if ``project.ignore`` is an existing file with that name and loads it.
+                - Since ``'*.tmp'`` matches neither condition, it is treated as a literal glob pattern.
+
+                If ``None``, no ignore rules are applied.
+
             dut_extra_args: Extra positional arguments for the DUT. e.g., ("arg1", "args2")
             dut_extra_kwargs: Extra keyword arguments for the DUT. e.g., {"arg1": 1, "arg2": 2}
         Returns:
@@ -109,13 +133,17 @@ class ToffeeRequest:
         if wave_format:
             if waveform_filename:
                 self.waveform_filename = ".".join((waveform_filename, wave_format))
-            self.dut.SetWaveform(self.waveform_filename)
+            if self.waveform_filename:
+                self.dut.SetWaveform(self.waveform_filename)
 
         # Set coverage name
         if use_code_cov:
+            if ignore_patterns:
+                self.ignores = list(ignore_patterns)
             if coverage_filename:
                 self.coverage_filename = coverage_filename
-            self.dut.SetCoverage(self.coverage_filename)
+            if self.coverage_filename:
+                self.dut.SetCoverage(self.coverage_filename)
 
         return self.dut
 
@@ -149,7 +177,7 @@ class ToffeeRequest:
                 if not self.__no_func():
                     set_func_coverage(request, self.cov_groups)
                 if use_code_cov:
-                    set_line_coverage(request, self.coverage_filename)
+                    set_line_coverage(request, self.coverage_filename, self.ignores)
 
         for g in self.cov_groups:
             g.clear()

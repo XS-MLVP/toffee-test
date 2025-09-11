@@ -1,7 +1,6 @@
 import os
 import re
 import subprocess
-import copy
 import json
 import base64
 from typing import List, Iterable
@@ -66,7 +65,7 @@ def convert_line_coverage(line_coverage_list, output_dir):
     from pathlib import Path
     assert isinstance(line_coverage_list, list), "Invalid line coverage list"
     coverage_dat_list: list[str] = []
-    ignore_files: list[str] = []
+    ignore_text: set[str] = set()
     final_ignore_info = []
     for ldata in line_coverage_list:
         fdat = ldata["data"]
@@ -75,17 +74,17 @@ def convert_line_coverage(line_coverage_list, output_dir):
             fign = [fign]
         assert isinstance(fign, list), f"Invalid data file: '{fign}'"
         assert os.path.exists(fdat), f"Invalid data file: '{fdat}'"
-        ignore_text = []
         # find all .ignore files
         ignore_file_list = []
         for f in fign:
             path = Path(f)
-            assert path.exists(), f"Ignore file/path does not exist: '{f}'"
             if path.is_dir():
                 ignores = path.rglob("*.ignore")
                 ignore_file_list.extend(ignores)
-            else:
+            elif path.is_file():
                 ignore_file_list.append(f)
+            else:
+                ignore_text.add(f)
         for ignore_file in ignore_file_list:
             for i, ln in enumerate(open(ignore_file).readlines()):
                 ln = ln.strip()
@@ -93,17 +92,16 @@ def convert_line_coverage(line_coverage_list, output_dir):
                     continue
                 for c in ["'", "\""]:
                     assert c not in ln, f"Invalid line number({i}): '{ln}'"
-                ignore_text.append(f"\'{ln}\'")
+                ignore_text.add(ln)
         coverage_dat_list.append(fdat)
-        ignore_files.extend(ignore_text)
-        final_ignore_info.append((fdat, copy.deepcopy(ignore_file_list)))
+        final_ignore_info.append((fdat, ignore_file_list.copy()))
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     merged_coverage = merge_verilator_coverage(coverage_dat_list)
-    verilator_coverage_miss(merged_coverage, os.path.join(output_dir, "coverage.json"))
+    verilator_coverage_miss(merged_coverage, os.path.join(output_dir, "../coverage.json"))
     merged_info = os.path.join(output_dir, "merged.info")
     verilator_coverage_to_lcov(merged_coverage, merged_info)
-    lcov_remove_ingore(ignore_files, merged_info)
+    lcov_remove_ingore(ignore_text, merged_info)
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
     assert su, f"Failed to convert line coverage: {se}"
     return parse_lines(so), final_ignore_info
@@ -122,16 +120,16 @@ def verilator_coverage_to_lcov(merged_coverage: list[tuple[str, int]], outfile: 
     subprocess.run(cmd, stdout=subprocess.PIPE, shell=False, check=True)
 
 
-def lcov_remove_ingore(ignore_list: List[str], out_file: str, max_kbytes=10) -> None:
-    if not ignore_list:
+def lcov_remove_ingore(ignore_text: Iterable[str], out_file: str, max_kbytes=10) -> None:
+    if not ignore_text:
         return
     max_bytes = max_kbytes * 1024
-    cmd_list = ["lcov", "-o", out_file, "-r", out_file]
+    cmd_list = ["lcov", "--branch-coverage", "-o", out_file, "-r", out_file]
     cmd_len = len(" ".join(cmd_list)) + 1
     to_be_ignored = []
     total_size = cmd_len
-    for f in ignore_list:
-        f_len = 3 + len(f)  # The length of '-a ' is 3
+    for f in ignore_text:
+        f_len = len(f)  # The length of '-a ' is 3
         if f_len + total_size > max_bytes:
             _lcov_remove(to_be_ignored, out_file)  # Merge into the temp
             total_size = cmd_len
@@ -142,9 +140,9 @@ def lcov_remove_ingore(ignore_list: List[str], out_file: str, max_kbytes=10) -> 
     _lcov_remove(to_be_ignored, out_file)
 
 
-def _lcov_remove(list_to_merge: Iterable[str], out_file: str) -> None:
-    cmd = ["lcov", "-o", out_file, "-r", out_file]
-    cmd.extend(list_to_merge)
+def _lcov_remove(list_to_remove: Iterable[str], out_file: str) -> None:
+    cmd = ["lcov", "--branch-coverage", "-o", out_file, "-r", out_file]
+    cmd.extend(list_to_remove)
     subprocess.run(cmd, stdout=subprocess.PIPE, shell=False, check=True)
 
 
