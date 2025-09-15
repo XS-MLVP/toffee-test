@@ -124,7 +124,7 @@ def lcov_remove_ingore(ignore_text: Iterable[str], out_file: str, max_kbytes=10)
     if not ignore_text:
         return
     max_bytes = max_kbytes * 1024
-    cmd_list = ["lcov", "--branch-coverage", "-o", out_file, "-r", out_file]
+    cmd_list = ["lcov", "--rc", "lcov_branch_coverage=1", "-o", out_file, "-r", out_file]
     cmd_len = len(" ".join(cmd_list)) + 1
     to_be_ignored = []
     total_size = cmd_len
@@ -141,7 +141,7 @@ def lcov_remove_ingore(ignore_text: Iterable[str], out_file: str, max_kbytes=10)
 
 
 def _lcov_remove(list_to_remove: Iterable[str], out_file: str) -> None:
-    cmd = ["lcov", "--branch-coverage", "-o", out_file, "-r", out_file]
+    cmd = ["lcov", "--rc", "lcov_branch_coverage=1", "-o", out_file, "-r", out_file]
     cmd.extend(list_to_remove)
     subprocess.run(cmd, stdout=subprocess.PIPE, shell=False, check=True)
 

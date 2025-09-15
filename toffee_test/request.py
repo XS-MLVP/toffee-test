@@ -13,7 +13,7 @@ class ToffeeRequest:
         self.args = None
         self.request = request
         self.cov_groups = []
-        self.ignores = []
+        self.ignores = None
 
         self.waveform_filename = None
         self.coverage_filename = None
