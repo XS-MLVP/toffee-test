@@ -43,6 +43,9 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
     total = MetricStats()
     miss = MetricStats()
     # Parse file
+    collect_lines: dict[tuple[str, int], int] = {}
+    collect_modules: dict[tuple[str, int], str] = {}
+    # file_lines_hit: dict[str, set[int]] = {}
     miss_tree: dict[str, FileCoverage] = {}
     for meta, hit in coverages:
         module_name = meta.module_name
@@ -52,12 +55,15 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
         # Update
         is_miss = hit == 0
         if meta.type == "line":
-            total.line += 1
-            file_cov.total.line += 1
-            module_cov.total.line += 1
-            miss.line += is_miss
-            file_cov.miss.line += is_miss
-            module_cov.miss.line += is_miss
+            # if hit > 0:
+            #     file_lines_hit.setdefault(meta.path, set())
+            #     file_lines_hit[meta.path].add(meta.line)
+            # for block_line in meta.block_set:
+            #     if block_line == meta.line:
+            #         continue
+            #     if hit > 0:
+            #         file_lines_hit[meta.path].add(block_line)
+            pass
         elif meta.type == "toggle":
             total.toggle += 1
             file_cov.total.toggle += 1
@@ -65,6 +71,9 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
             miss.toggle += is_miss
             file_cov.miss.toggle += is_miss
             module_cov.miss.toggle += is_miss
+            # file_lines_hit.setdefault(meta.path, set())
+            # if hit > 0 and meta.line not in file_lines_hit[meta.path]:
+            #     file_lines_hit[meta.path].add(meta.line)
         elif meta.type == "branch":
             total.branch += 1
             file_cov.total.branch += 1
@@ -72,6 +81,13 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
             miss.branch += is_miss
             file_cov.miss.branch += is_miss
             module_cov.miss.branch += is_miss
+            # if hit > 0:
+            #     file_lines_hit.setdefault(meta.path, set())
+            #     file_lines_hit[meta.path].add(meta.line)
+            #     for block_line in meta.block_set:
+            #         if block_line == meta.line:
+            #             continue
+            #         file_lines_hit[meta.path].add(block_line)
         elif meta.type == "expr":
             total.expr += 1
             file_cov.total.expr += 1
@@ -79,20 +95,53 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
             miss.expr += is_miss
             file_cov.miss.expr += is_miss
             module_cov.miss.expr += is_miss
+            # if hit > 0:
+            #     file_lines_hit.setdefault(meta.path, set())
+            #     file_lines_hit[meta.path].add(meta.line)
+            #     for block_line in meta.block_set:
+            #         if block_line == meta.line:
+            #             continue
+            #         file_lines_hit[meta.path].add(block_line)
+        # Record the hit results of line coverage
+        key = (meta.path, meta.line)
+        old = collect_lines.get(key, 0)
+        collect_lines[key] = old + hit
+        collect_modules[key] = meta.module_name
+        for block_line in meta.block_set:
+            if block_line == meta.line:
+                continue
+            block_key = (meta.path, block_line)
+            old = collect_lines.get(block_key, 0)
+            collect_lines[block_key] = old + hit
+            collect_modules[block_key] = meta.module_name
         if is_miss:
             metric_set = module_cov.get_metric_set(meta.type)
             if meta.block:
-                for b in meta.block:
-                    metric_set.update(b)
+                s = meta.block_set
+                metric_set.update(s)
             else:
                 metric_set.add(meta.line)
-
+    # Update line coverage
+    for (file, line), hit in collect_lines.items():
+        module_name = collect_modules[(file, line)]
+        file_cov = miss_tree.setdefault(file, FileCoverage())
+        module_cov = file_cov.modules.setdefault(module_name, ModuleCoverage())
+        total.line += 1
+        file_cov.total.line += 1
+        module_cov.total.line += 1
+        if hit > 0:
+            continue
+        miss.line += 1
+        file_cov.miss.line += 1
+        module_cov.miss.line += 1
+        module_cov.line.add(line)
     final_miss: dict[str, dict[str, dict[str, dict]]] = {}
     for path, file_cov in miss_tree.items():
         final_miss[path] = {
             "total": asdict(file_cov.total),
             "miss": asdict(file_cov.miss),
-            "modules": {}
+            "modules": {},
+            # "line_hit": _merge_consecutive_lines(file_lines_hit[path]),
         }
         for module_name, module_cov in file_cov.modules.items():
             final_miss[path]["modules"][module_name] = {
@@ -132,7 +181,7 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
         "uncovered": {
             "schema": miss_schema,
             "data": final_miss,
-        }
+        },
     }
     # Export json
     with open(out_file, "w") as f:
@@ -140,15 +189,13 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
 
 
 def get_range_filter(path: str, ignore_miss_line_ranges: dict[str, set[int]]) -> set[int]:
-    if path[0] == "/":
-        return ignore_miss_line_ranges.get(path, set())
-    pat = "/" + path
+    if path in ignore_miss_line_ranges:
+        return ignore_miss_line_ranges[path]
     final = set()
 
     for k, v in ignore_miss_line_ranges.items():
-        if k.endswith(pat):
-            final = v
-            break
+        if k[0] != '/' and path.endswith(k):
+            final.update(v)
 
     return final
 
@@ -166,15 +213,14 @@ def filter_ranges(input_ranges: list[range], range_filters: set[int]) -> list[ra
 
 
 def filter_coverage(
-        merged_coverage: list[tuple[str, int]],
+        merged_coverage: list[tuple[VerilatorCoverage, int]],
         ignore_patterns: set[str],
         ignore_miss_line_ranges: dict[str, set[int]],
 ) -> list[tuple[VerilatorCoverage, int]]:
     filtered_coverage: list[tuple[VerilatorCoverage, int]] = []
 
-    for coverage, hit in merged_coverage:
+    for meta, hit in merged_coverage:
         # Remove files to be filtered
-        meta = VerilatorCoverage(coverage)
         is_ignore = False
         for pat in ignore_patterns:
             if fnmatch.fnmatch(meta.path, pat):
@@ -299,19 +345,23 @@ def count_verilator_coverage_hit(path: str) -> Counter:
         return verilator_coverage_dat
 
 
-def merge_verilator_coverage(coverage_files: Iterable[str]) -> list[tuple[str, int]]:
+def merge_verilator_coverage(coverage_files: Iterable[str]) -> list[tuple[VerilatorCoverage, int]]:
     c = Counter()
     with ThreadPoolExecutor() as pool:
         futures = {pool.submit(count_verilator_coverage_hit, f) for f in coverage_files}
         for future in as_completed(futures):
             res = future.result()
             c.update(res)
-    return sorted(c.items())
+    coverages: list[tuple[VerilatorCoverage, int]] = [
+        (VerilatorCoverage(cov), hit) for cov, hit in c.items()
+    ]
+    coverages.sort()
+    return coverages
 
 
 def preprocess_verilator_coverage(
         line_coverage_list: list[dict]
-) -> tuple[list[tuple[str, int]], list[tuple], set[str], dict[str, set[int]]]:
+) -> tuple[list[tuple[VerilatorCoverage, int]], list[tuple], set[str], dict[str, set[int]]]:
     dat_list, ignore_info, ignore_patterns, ignore_miss_lines = process_coverage_list(line_coverage_list)
     # Merge coverage data first
     merged_coverage = merge_verilator_coverage(dat_list)
