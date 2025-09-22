@@ -8,17 +8,11 @@ from .models import VerilatorCoverage
 
 
 def convert_verilator_coverage(line_coverage_list: list[dict], output_dir) -> tuple[str, list]:
-    import time
-    import tracemalloc
     from .processor import (
         preprocess_verilator_coverage,
         filter_coverage,
         verilator_coverage_miss,
     )
-
-    # Perform statistic
-    tracemalloc.start()
-    start_time = time.time()
 
     assert isinstance(line_coverage_list, list), "Invalid line coverage list"
     merged_coverage, ignore_info, ignore_pattern, ignore_miss_range = preprocess_verilator_coverage(line_coverage_list)
@@ -30,9 +24,6 @@ def convert_verilator_coverage(line_coverage_list: list[dict], output_dir) -> tu
     merged_info = os.path.join(output_dir, "merged.info")
     verilator_coverage_to_lcov(filtered_coverage, merged_info)
 
-    end_time = time.time()
-    current, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
     return merged_info, ignore_info
 
 
