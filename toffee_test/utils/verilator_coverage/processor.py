@@ -12,7 +12,7 @@ from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Iterable, Counter
 
-from .models import VerilatorCoverage, MetricStats, ModuleCoverage, FileCoverage
+from .models import VerilatorCoverage, MetricStats, ModuleCoverage, FileCoverage, CoverageSummary
 
 
 def merge_intervals(intervals: Iterable[int]) -> list[range]:
@@ -37,7 +37,7 @@ def _merge_consecutive_lines(lines: set[int]) -> tuple[str, ...]:
     return tuple(f"{x.start}-{x.stop - 1}" for x in sorted_lines)
 
 
-def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]], out_file: str) -> None:
+def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]], out_file: str) -> CoverageSummary:
     # Parse missing coverage
     coverages = merged_coverage
     total = MetricStats()
@@ -171,21 +171,25 @@ def verilator_coverage_miss(merged_coverage: list[tuple[VerilatorCoverage, int]]
     }
 
     desc = f"Code coverage summary. `data` field contains uncovered lines"
-    empty_coverage = {
-        "description": desc,
-        "simulator": "verilator",
-        "overview": {
-            "total": asdict(total),
-            "miss": asdict(miss),
-        },
-        "uncovered": {
-            "schema": miss_schema,
-            "data": final_miss,
-        },
+    sim = "verilator"
+    overview = {
+        "total": asdict(total),
+        "miss": asdict(miss),
     }
+    uncovered = {
+        "schema": miss_schema,
+        "data": final_miss,
+    }
+    summary = CoverageSummary(
+        desc,
+        sim,
+        overview,
+        uncovered
+    )
     # Export json
     with open(out_file, "w") as f:
-        json.dump(empty_coverage, f, indent=2)
+        json.dump(summary._asdict(), f, indent=2)
+    return summary
 
 
 def get_range_filter(path: str, ignore_miss_line_ranges: dict[str, set[int]]) -> set[int]:

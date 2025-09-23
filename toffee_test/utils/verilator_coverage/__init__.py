@@ -7,7 +7,7 @@ from pathlib import Path
 from .models import VerilatorCoverage
 
 
-def convert_verilator_coverage(line_coverage_list: list[dict], output_dir) -> tuple[str, list]:
+def convert_verilator_coverage(line_coverage_list: list[dict], output_dir) -> tuple[str, list[tuple]]:
     from .processor import (
         preprocess_verilator_coverage,
         filter_coverage,
