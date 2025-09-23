@@ -23,7 +23,7 @@ def get_template_dir():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 
 
-__output_report_dir__ = None
+__output_report_dir__ = ""
 
 
 def set_output_report(report_path):
@@ -35,23 +35,28 @@ def set_output_report(report_path):
     __output_report_dir__ = report_dir
 
 
-def __update_line_coverage__(line_coverage_list=[], line_grate=99):
-    if line_coverage_list is None:
+def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99):
+    if not line_coverage_list:
         return None
-    if len(line_coverage_list) == 0:
-        return None
-    (hint, all), ignore = convert_line_coverage(
-        line_coverage_list, os.path.join(__output_report_dir__, "line_dat")
-    )
-    assert os.path.exists(
-        os.path.join(__output_report_dir__, "line_dat/index.html")
-    ), "Failed to convert line coverage"
+    coverage_error = ""
+    line_dat_dir = os.path.join(__output_report_dir__, "line_dat")
+    line_dat_html = os.path.join(line_dat_dir, "index.html")
+    try:
+        (hint, total), ignore = convert_line_coverage(
+            line_coverage_list, line_dat_dir
+        )
+    except Exception as e:
+        hint = total = 0
+        ignore = []
+        coverage_error = repr(e)
+    assert os.path.exists(line_dat_html), "Failed to convert line coverage"
 
     return {
         "hints": hint,
-        "total": all,
+        "total": total,
         "grate": __report_info__.get("line_grate", line_grate),
-        "ignore": ignore
+        "ignore": ignore,
+        "error": coverage_error,
     }
 
 
