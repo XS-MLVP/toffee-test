@@ -28,7 +28,7 @@ def parse_lines(text: str):
     return -1, -1
 
 
-def convert_line_coverage(line_coverage_list, output_dir):
+def convert_line_coverage(line_coverage_list: list[dict], output_dir):
     from .verilator_coverage import convert_verilator_coverage
     merged_info ,final_ignore_info = convert_verilator_coverage(line_coverage_list, output_dir)
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])

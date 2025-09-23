@@ -3,10 +3,12 @@ __all__ = [
     "MetricStats",
     "ModuleCoverage",
     "FileCoverage",
+    "CoverageSummary"
 ]
 
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 
 class VerilatorCoverage:
@@ -85,7 +87,6 @@ class VerilatorCoverage:
         y = (other.path, other.line, other.column, other.type, other.module_name)
         return x < y
 
-
     def __str__(self):
         fields = [
             f"\x01f\x02{self.path}",
@@ -147,3 +148,10 @@ class FileCoverage:
     total: MetricStats = field(default_factory=MetricStats)
     miss: MetricStats = field(default_factory=MetricStats)
     modules: dict[str, ModuleCoverage] = field(default_factory=dict)
+
+
+class CoverageSummary(NamedTuple):
+    description: str
+    simulator: str
+    overview: dict[str, dict]
+    uncovered: dict[str, dict]
