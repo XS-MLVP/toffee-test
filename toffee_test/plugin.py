@@ -4,6 +4,7 @@ import os
 import pytest
 import toffee
 from toffee import run
+import time
 
 from .markers import toffee_tags_process
 from .reporter import get_default_report_name
@@ -94,6 +95,7 @@ def pytest_addoption(parser: pytest.Parser):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
+    config._toffee_test_start_time = time.time()
     config.addinivalue_line(
         "markers", "mlvp_async: mark test to run with toffee's event loop"
     )

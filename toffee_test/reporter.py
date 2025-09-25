@@ -4,6 +4,7 @@ import uuid
 from collections import Counter
 from datetime import datetime
 from typing import Union
+import shutil
 
 from filelock import FileLock
 from toffee.funcov import CovGroup, get_func_full_name
@@ -369,3 +370,137 @@ def set_meta_info(key, value, is_del=False):
 def set_line_good_rate(rate):
     global __report_info__
     __report_info__["line_grate"] = rate
+
+
+def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_path=False, tmp_prefix = "toffee_tmp"):
+    """
+    Get or create a file path in temporary directory with version management and history cleanup.
+
+    This function creates a unique temporary directory based on the test session start time
+    and manages file versions within worker-specific subdirectories. It's primarily used for
+    storing temporary files generated during testing, such as coverage data files.
+
+    The function supports multi-process testing (pytest-xdist) by automatically detecting
+    the worker ID and creating separate subdirectories for each worker within the main
+    temporary directory to avoid conflicts.
+
+    Directory Structure:
+        workspace/
+        ├── toffee_tmp_{timestamp}_{milliseconds}/
+        │   ├── master/          # Single process files
+        │   ├── gw0/            # Worker 0 files
+        │   ├── gw1/            # Worker 1 files
+        │   └── gw2/            # Worker 2 files
+        └── toffee_tmp_{old_timestamp}/  # Old directories (cleaned up)
+
+    Args:
+        request: pytest request object containing session information
+        workspace (str): workspace root directory path
+        filename (str): target filename (including extension)
+        max_tmp_history (int, optional): number of historical temporary directories to keep, default is 1
+        new_path (bool, optional): whether to force creation of a new file path, default is False
+        tmp_prefix (str, optional): prefix for temporary directory names, default is "toffee_tmp"
+
+    Returns:
+        str: complete file path in the worker-specific temporary subdirectory
+
+    Raises:
+        OSError: when unable to create directories or access the file system
+        AttributeError: when request object lacks necessary attributes
+
+    Examples:
+        Single process:
+        >>> get_file_in_tmp_dir(request, "/tmp", "coverage.dat")
+        "/tmp/toffee_tmp_20231225120000123/master/coverage.dat"
+
+        Multi-process (pytest-xdist):
+        >>> get_file_in_tmp_dir(request, "/tmp", "test.log", new_path=True)
+        "/tmp/toffee_tmp_20231225120000123/gw0/test1.log"
+    """
+    # Get worker ID for multi-process support (pytest-xdist)
+    def get_worker_id():
+        """Extract worker ID from environment or request object"""
+        import os
+        # Method 1: Environment variable (most reliable)
+        worker_id = os.environ.get('PYTEST_XDIST_WORKER', None)
+        if worker_id:
+            return worker_id
+        # Method 2: Check request object for worker info (only for real pytest objects)
+        try:
+            if hasattr(request, 'node') and hasattr(request.node, 'workerinput'):
+                worker_attr = getattr(request.node.workerinput, 'workerid', None)
+                if worker_attr and isinstance(worker_attr, str):
+                    return worker_attr
+            if hasattr(request, 'config') and hasattr(request.config, 'workerinput'):
+                worker_attr = getattr(request.config.workerinput, 'workerid', None)
+                if worker_attr and isinstance(worker_attr, str):
+                    return worker_attr
+        except (AttributeError, TypeError):
+            # Ignore errors from mock objects or invalid attributes
+            pass
+        # Method 3: Fall back to master (single process)
+        return 'master'
+    # Extract session information and worker ID
+    starttime = request.config._toffee_test_start_time
+    starttime_str = datetime.fromtimestamp(starttime).strftime("%Y%m%d%H%M%S")
+    min_sec = int((starttime * 1000) % 1000)
+    worker_id = get_worker_id()
+    # Create main temporary directory (shared across workers)
+    tmp_dir = f"{tmp_prefix}_{starttime_str}_{min_sec:03d}"
+    tmp_path = os.path.join(workspace, tmp_dir)
+    # Create worker-specific subdirectory
+    worker_path = os.path.join(tmp_path, worker_id)
+    if not os.path.exists(workspace):
+        try:
+            os.makedirs(workspace, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"create {workspace} fail: {e}")
+    if not os.path.exists(tmp_path):
+        try:
+            # Clean up old main temporary directories (not worker-specific)
+            old_tmp_list = [
+                f for f in os.listdir(workspace)
+                if f.startswith(tmp_prefix + "_") and os.path.isdir(os.path.join(workspace, f))
+            ]
+            old_tmp_list.sort()  # Sort by name to ensure chronological order
+            # Keep only the specified number of historical main directories
+            while len(old_tmp_list) > max_tmp_history:
+                old_tmp = old_tmp_list.pop(0)
+                old_tmp_path = os.path.join(workspace, old_tmp)
+                try:
+                    shutil.rmtree(old_tmp_path)
+                except Exception as e:
+                    # Silent cleanup failure - don't interrupt main functionality
+                    pass
+        except OSError:
+            # If workspace access fails, continue without cleanup
+            pass
+        try:
+            os.makedirs(tmp_path, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"create {tmp_path} fail: {e}")
+    # Ensure worker-specific subdirectory exists
+    if not os.path.exists(worker_path):
+        try:
+            os.makedirs(worker_path, exist_ok=True)
+        except OSError as e:
+            raise OSError(f"create worker directory {worker_path} fail: {e}")
+    name, ext = os.path.splitext(filename)
+    try:
+        old_files = [
+            f for f in os.listdir(worker_path)
+            if f.startswith(name) and (not ext or f.endswith(ext))
+        ]
+        old_files.sort()
+    except OSError:
+        old_files = []
+    if not new_path and old_files:
+        target_filename = os.path.join(worker_path, old_files[-1])
+    else:
+        # For regular files, use existing logic
+        index = len(old_files)
+        if index == 0:
+            target_filename = os.path.join(worker_path, f"{name}{ext}")
+        else:
+            target_filename = os.path.join(worker_path, f"{name}{index:03d}{ext}")
+    return target_filename
