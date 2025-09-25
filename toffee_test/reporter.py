@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Union
 import shutil
+import time
 
 from filelock import FileLock
 from toffee.funcov import CovGroup, get_func_full_name
@@ -441,7 +442,10 @@ def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_pat
         # Method 3: Fall back to master (single process)
         return 'master'
     # Extract session information and worker ID
-    starttime = request.config._toffee_test_start_time
+    if not request:
+        starttime = 0 # Used for checker
+    else:
+        starttime = request.config._toffee_test_start_time
     starttime_str = datetime.fromtimestamp(starttime).strftime("%Y%m%d%H%M%S")
     min_sec = int((starttime * 1000) % 1000)
     worker_id = get_worker_id()
