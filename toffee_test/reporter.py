@@ -40,16 +40,16 @@ def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99)
         return None
     coverage_error = ""
     line_dat_dir = os.path.join(__output_report_dir__, "line_dat")
-    line_dat_html = os.path.join(line_dat_dir, "index.html")
     try:
         (hint, total), ignore = convert_line_coverage(
             line_coverage_list, line_dat_dir
         )
     except Exception as e:
+        from toffee.logger import error
         hint = total = 0
         ignore = []
         coverage_error = repr(e)
-    assert os.path.exists(line_dat_html), "Failed to convert line coverage"
+        error(coverage_error)
 
     return {
         "hints": hint,
