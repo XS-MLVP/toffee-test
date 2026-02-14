@@ -32,7 +32,10 @@ def convert_line_coverage(line_coverage_list: list[dict], output_dir):
     from .verilator_coverage import convert_verilator_coverage
     merged_info ,final_ignore_info = convert_verilator_coverage(line_coverage_list, output_dir)
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
-    assert su, f"Failed to convert line coverage: {se}"
+    if not su:
+        import warnings
+        warnings.warn(f"Failed to convert line coverage: {se}")
+        return (0, 0), final_ignore_info
     return parse_lines(so), final_ignore_info
 
 def base64_encode(data):
