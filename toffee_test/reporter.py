@@ -227,10 +227,15 @@ def process_context(context, config):
     coverage_func_keys = []
     coverage_line_list = []
     coverage_line_keys = []
+    has_testcase_func_coverage = False
 
     for t in context["tests"]:
+        test_passed = t.get("status", {}).get("word") == "PASSED"
         for p in t["phases"]:
             if hasattr(p["report"], "__coverage_group__"):
+                has_testcase_func_coverage = True
+                if not test_passed:
+                    continue
                 for fc_data in p["report"].__coverage_group__:
                     key = "%s-%s" % (fc_data["hash"], fc_data["id"])
                     if key in coverage_func_keys:
@@ -245,7 +250,7 @@ def process_context(context, config):
                 coverage_line_keys.append(key)
                 coverage_line_list.append(lc_data)
     # search data in session
-    if hasattr(context["session"], "__coverage_group__"):
+    if not has_testcase_func_coverage and hasattr(context["session"], "__coverage_group__"):
         for fc_data in context["session"].__coverage_group__:
             key = "%s-%s" % (fc_data["hash"], fc_data["id"])
             if key in coverage_func_keys:
