@@ -243,6 +243,8 @@ def process_context(context, config):
                     coverage_func_keys.append(key)
                     coverage_func_list.append(fc_data["data"])
             if hasattr(p["report"], "__line_coverage__"):
+                if not test_passed:
+                    continue
                 lc_data = p["report"].__line_coverage__
                 key = "%s-%s" % (lc_data["hash"], lc_data["id"])
                 if key in coverage_line_keys:
