@@ -51,7 +51,6 @@ def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99)
         hint = total = 0
         ignore = []
         coverage_error = repr(e)
-        error(coverage_error)
 
     return {
         "hints": hint,
