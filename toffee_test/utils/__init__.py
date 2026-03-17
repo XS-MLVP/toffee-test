@@ -34,7 +34,7 @@ def convert_line_coverage(line_coverage_list: list[dict], output_dir):
     su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
     if not su:
         import warnings
-        warnings.warn(f"Failed to convert line coverage: {se}")
+        #warnings.warn(f"Failed to convert line coverage: {se}")
         return (0, 0), final_ignore_info
     return parse_lines(so), final_ignore_info
 
