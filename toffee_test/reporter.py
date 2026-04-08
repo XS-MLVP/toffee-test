@@ -233,8 +233,6 @@ def process_context(context, config):
         for p in t["phases"]:
             if hasattr(p["report"], "__coverage_group__"):
                 has_testcase_func_coverage = True
-                if not test_passed:
-                    continue
                 for fc_data in p["report"].__coverage_group__:
                     key = "%s-%s" % (fc_data["hash"], fc_data["id"])
                     if key in coverage_func_keys:
