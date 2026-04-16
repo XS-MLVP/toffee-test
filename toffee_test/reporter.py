@@ -453,6 +453,7 @@ def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_pat
     starttime_str = datetime.fromtimestamp(starttime).strftime("%Y%m%d%H%M%S")
     min_sec = int((starttime * 1000) % 1000)
     worker_id = get_worker_id()
+    is_worker_process = worker_id != 'master'
     # Create main temporary directory (shared across workers)
     tmp_dir = f"{tmp_prefix}_{starttime_str}_{min_sec:03d}"
     tmp_path = os.path.join(workspace, tmp_dir)
@@ -465,21 +466,23 @@ def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_pat
             raise OSError(f"create {workspace} fail: {e}")
     if not os.path.exists(tmp_path):
         try:
-            # Clean up old main temporary directories (not worker-specific)
-            old_tmp_list = [
-                f for f in os.listdir(workspace)
-                if f.startswith(tmp_prefix + "_") and os.path.isdir(os.path.join(workspace, f))
-            ]
-            old_tmp_list.sort()  # Sort by name to ensure chronological order
-            # Keep only the specified number of historical main directories
-            while len(old_tmp_list) > max_tmp_history:
-                old_tmp = old_tmp_list.pop(0)
-                old_tmp_path = os.path.join(workspace, old_tmp)
-                try:
-                    shutil.rmtree(old_tmp_path)
-                except Exception as e:
-                    # Silent cleanup failure - don't interrupt main functionality
-                    pass
+            # Only the master/single-process context may clean old shared tmp roots.
+            # Workers must not remove sibling workers' coverage directories.
+            if not is_worker_process:
+                old_tmp_list = [
+                    f for f in os.listdir(workspace)
+                    if f.startswith(tmp_prefix + "_") and os.path.isdir(os.path.join(workspace, f))
+                ]
+                old_tmp_list.sort()  # Sort by name to ensure chronological order
+                # Keep only the specified number of historical main directories
+                while len(old_tmp_list) > max_tmp_history:
+                    old_tmp = old_tmp_list.pop(0)
+                    old_tmp_path = os.path.join(workspace, old_tmp)
+                    try:
+                        shutil.rmtree(old_tmp_path)
+                    except Exception:
+                        # Silent cleanup failure - don't interrupt main functionality
+                        pass
         except OSError:
             # If workspace access fails, continue without cleanup
             pass
