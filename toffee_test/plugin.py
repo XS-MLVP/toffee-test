@@ -95,7 +95,10 @@ def pytest_addoption(parser: pytest.Parser):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
-    config._toffee_test_start_time = time.time()
+    if hasattr(config, "workerinput"):
+        config._toffee_test_start_time = config.workerinput["toffee_test_start_time"]
+    else:
+        config._toffee_test_start_time = time.time()
     config.addinivalue_line(
         "markers", "mlvp_async: mark test to run with toffee's event loop"
     )
@@ -139,6 +142,7 @@ def pytest_configure(config: pytest.Config):
 def pytest_configure_node(node):
     node.workerinput["report_name"] = node.config.option.report_name
     node.workerinput["report_dir"] = node.config.option.report_dir
+    node.workerinput["toffee_test_start_time"] = node.config._toffee_test_start_time
 
 
 """
