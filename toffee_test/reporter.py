@@ -377,7 +377,10 @@ def set_line_good_rate(rate):
     __report_info__["line_grate"] = rate
 
 
-def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_path=False, tmp_prefix = "toffee_tmp"):
+def get_file_in_tmp_dir(request, workspace, filename,
+                        max_tmp_history=1, new_path=False, tmp_prefix="toffee_tmp",
+                        fix_timestamp=None
+                        ):
     """
     Get or create a file path in temporary directory with version management and history cleanup.
 
@@ -405,6 +408,7 @@ def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_pat
         max_tmp_history (int, optional): number of historical temporary directories to keep, default is 1
         new_path (bool, optional): whether to force creation of a new file path, default is False
         tmp_prefix (str, optional): prefix for temporary directory names, default is "toffee_tmp"
+        fix_timestamp (float, optional): fixed timestamp for directory naming (for testing purposes), default is None
 
     Returns:
         str: complete file path in the worker-specific temporary subdirectory
@@ -450,6 +454,8 @@ def get_file_in_tmp_dir(request, workspace, filename, max_tmp_history=1, new_pat
         starttime = 0 # Used for checker
     else:
         starttime = request.config._toffee_test_start_time
+    if fix_timestamp is not None:
+        starttime = fix_timestamp
     starttime_str = datetime.fromtimestamp(starttime).strftime("%Y%m%d%H%M%S")
     min_sec = int((starttime * 1000) % 1000)
     worker_id = get_worker_id()
