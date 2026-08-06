@@ -323,7 +323,11 @@ openFunctionalDetailModal();
             </td>
             <td>{{ coverages.line.hints }}</td>
             <td>{{ coverages.line.total }}</td>
-            <td><a href="line_dat/index.html" target="_blank">View Details</a></td>
+            {% if coverages.line.detail %}
+            <td><a href="{{ coverages.line.detail }}" target="_blank">View Details</a></td>
+            {% else %}
+            <td>N/A</td>
+            {% endif %}
             {% endif %}
           </tr>
         </table>

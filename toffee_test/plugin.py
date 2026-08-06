@@ -92,9 +92,18 @@ def pytest_addoption(parser: pytest.Parser):
         help="Run test without functional coverage.",
     )
 
+    group.addoption(
+        "--case-coverage",
+        action="store_true",
+        default=False,
+        help="Generate normalized code coverage data for every testcase.",
+    )
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
+    if config.getoption("--case-coverage") and not config.getoption("--toffee-report"):
+        raise pytest.UsageError("--case-coverage requires --toffee-report")
     if hasattr(config, "workerinput"):
         config._toffee_test_start_time = config.workerinput["toffee_test_start_time"]
     else:

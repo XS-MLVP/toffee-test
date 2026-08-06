@@ -1,9 +1,13 @@
 import os
+import re
+import sys
 from collections.abc import Iterable
+from pathlib import Path
 from zlib import crc32
 
 from .reporter import set_func_coverage
-from .reporter import set_line_coverage
+from .reporter import set_code_coverage
+from .utils.code_coverage import CoverageRecord
 
 
 class ToffeeRequest:
@@ -17,6 +21,10 @@ class ToffeeRequest:
 
         self.waveform_filename = None
         self.coverage_filename = None
+        self.coverage_database = None
+        self.coverage_helper = None
+        self.coverage_simulator = None
+        self.coverage_test = None
 
     def __add_cov_sample(self, cov_groups):
         """
@@ -106,6 +114,20 @@ class ToffeeRequest:
         # Options for running without waveform/coverage generation from the DUT.
         wave_format: str = self.dut.GetWaveFormat()
         use_code_cov: bool = self.dut.GetCovMetrics() != 0
+        if use_code_cov and hasattr(self.dut, "GetCoverageHelperPath"):
+            self.coverage_helper = self.dut.GetCoverageHelperPath() or None
+        if use_code_cov and not self.coverage_helper:
+            module = sys.modules.get(self.dut.__class__.__module__)
+            module_file = getattr(module, "__file__", None)
+            if module_file:
+                candidate = Path(module_file).resolve().parent / "coverage" / "coverage"
+                if candidate.is_file():
+                    self.coverage_helper = str(candidate)
+        self.coverage_simulator = (
+            str(self.dut.GetSimulator()).lower()
+            if hasattr(self.dut, "GetSimulator")
+            else "verilator"
+        )
 
         # Set default export name when generate report
         if self.__need_report():
@@ -122,8 +144,11 @@ class ToffeeRequest:
                 self.waveform_filename = "/".join((report_dir, default_name))
             # Set default coverage name
             if use_code_cov:
-                default_name = ".".join((default_export_name, "dat"))
-                self.coverage_filename = "/".join((report_dir, default_name))
+                if self.coverage_simulator == "vcs":
+                    self.coverage_filename = default_export_name
+                else:
+                    default_name = ".".join((default_export_name, "dat"))
+                    self.coverage_filename = os.path.join(report_dir, default_name)
 
         # Also export functional coverage
         if not self.__no_func() and self.cov_groups:
@@ -144,6 +169,10 @@ class ToffeeRequest:
                 self.coverage_filename = coverage_filename
             if self.coverage_filename:
                 self.dut.SetCoverage(self.coverage_filename)
+                self.coverage_database = self.dut.GetCoveragePath()
+                if self.coverage_simulator == "vcs":
+                    name = Path(self.coverage_filename).stem or self.dut.__class__.__name__
+                    self.coverage_test = re.sub(r"[^A-Za-z0-9_-]", "_", name)
 
         return self.dut
 
@@ -169,15 +198,35 @@ class ToffeeRequest:
         """
 
         if self.dut is not None:
-            self.dut.Finish()
-
             use_code_cov: bool = self.dut.GetCovMetrics() != 0
+            if use_code_cov and not self.coverage_database:
+                self.coverage_database = self.dut.GetCoveragePath()
+            status = self.dut.Finish()
+            if status != 0:
+                raise RuntimeError(f"DUT Finish() failed with status {status}")
 
             if self.__need_report():
                 if not self.__no_func():
                     set_func_coverage(request, self.cov_groups)
                 if use_code_cov:
-                    set_line_coverage(request, self.coverage_filename, self.ignores)
+                    worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+                    set_code_coverage(
+                        request,
+                        CoverageRecord(
+                            simulator=self.coverage_simulator,
+                            database=self.coverage_database,
+                            test=self.coverage_test,
+                            helper=self.coverage_helper,
+                            nodeid=getattr(
+                                self.request.node,
+                                "nodeid",
+                                f"{self.request.path}::{self.request.node.name}",
+                            ),
+                            summary_scope="test",
+                            ignore=list(self.ignores or []),
+                            worker=worker,
+                        ),
+                    )
 
         for g in self.cov_groups:
             g.clear()
