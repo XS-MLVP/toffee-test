@@ -1,5 +1,6 @@
 import inspect
 import os
+import shlex
 
 import pytest
 import toffee
@@ -19,6 +20,65 @@ from .utils import set_toffee_custom_key_value
 """
 toffee plugin
 """
+
+
+def _find_option_value(args, option):
+    """Return the last value assigned to an option in an argument sequence."""
+    found = False
+    value = None
+    index = 0
+    option_with_equals = f"{option}="
+
+    while index < len(args):
+        arg = os.fspath(args[index])
+        if arg == "--":
+            break
+        if arg == option:
+            if index + 1 < len(args):
+                found = True
+                value = os.fspath(args[index + 1])
+                index += 2
+                continue
+        elif arg.startswith(option_with_equals):
+            found = True
+            value = arg[len(option_with_equals) :]
+        index += 1
+
+    return found, value
+
+
+def _resolve_ini_report_dir(config: pytest.Config, report_dir: str) -> str:
+    """Resolve a relative report dir supplied by the selected config file."""
+    inipath = config.inipath
+    if inipath is None or os.path.isabs(report_dir):
+        return report_dir
+
+    ini_addopts = config.inicfg.get("addopts", [])
+    if isinstance(ini_addopts, str):
+        ini_addopts = shlex.split(ini_addopts)
+
+    found_in_ini, ini_report_dir = _find_option_value(
+        ini_addopts, "--report-dir"
+    )
+    if not found_in_ini or ini_report_dir != report_dir:
+        return report_dir
+
+    # An -o addopts=... override replaces the value read from the config file.
+    if any(
+        override.partition("=")[0] == "addopts"
+        for override in getattr(config, "_override_ini", ())
+    ):
+        return report_dir
+
+    # Environment and command-line values are parsed after file addopts, so
+    # they retain their normal cwd semantics when they override the file.
+    env_addopts = shlex.split(os.environ.get("PYTEST_ADDOPTS", ""))
+    if _find_option_value(env_addopts, "--report-dir")[0] or _find_option_value(
+        config.invocation_params.args, "--report-dir"
+    )[0]:
+        return report_dir
+
+    return os.path.normpath(os.path.join(os.fspath(inipath.parent), report_dir))
 
 
 @pytest.hookimpl(trylast=True, optionalhook=True)
@@ -120,6 +180,9 @@ def pytest_configure(config: pytest.Config):
             report_dir = config.workerinput["report_dir"]
         elif report_dir is None:
             report_dir = "reports"
+            config.option.report_dir = report_dir
+        else:
+            report_dir = _resolve_ini_report_dir(config, report_dir)
             config.option.report_dir = report_dir
         report_name = os.path.join(report_dir, report_name)
 
