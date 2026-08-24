@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Union
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from filelock import FileLock
 from toffee.funcov import CovGroup, get_func_full_name
@@ -34,6 +35,17 @@ def get_template_dir():
 __output_report_dir__ = ""
 
 
+def _code_coverage_dir_name(records):
+    simulators = set()
+    for value in records or []:
+        try:
+            record = value if isinstance(value, CoverageRecord) else CoverageRecord.from_dict(value)
+        except (TypeError, ValueError):
+            continue
+        simulators.add(record.simulator)
+    return "coverage_data" if simulators == {"vcs"} else "line_dat"
+
+
 def set_output_report(report_path):
     report_dir = os.path.dirname(report_path)
     if not os.path.exists(report_dir):
@@ -47,7 +59,19 @@ def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99)
     if not line_coverage_list:
         return None
     coverage_error = ""
-    line_dat_dir = os.path.join(__output_report_dir__, "line_dat")
+    coverage_dir_name = _code_coverage_dir_name(line_coverage_list)
+    line_dat_dir = os.path.join(__output_report_dir__, coverage_dir_name)
+    vcs_mode = os.environ.get("TOFFEE_VCS_AGGREGATE_MODE", "cumulative").strip().lower()
+    if coverage_dir_name == "coverage_data" and vcs_mode == "deferred":
+        # Coverage-refine stage C queries only its fixed batch targets after
+        # pytest.  Do not run the full VCS/URG aggregate from the reporter.
+        return {
+            "hints": 0, "total": 0, "grate": 0, "ignore": [], "detail": "",
+            "summary_file": "", "metrics": {}, "databases": [], "warnings": [],
+            "error": "", "collection_mode": "deferred",
+        }
+    if vcs_mode not in {"cumulative", "deferred"}:
+        raise ValueError("TOFFEE_VCS_AGGREGATE_MODE must be 'cumulative' or 'deferred'")
     try:
         result = convert_code_coverage(line_coverage_list, line_dat_dir)
         return result.to_report_dict(
@@ -296,7 +320,13 @@ def _testcase_duration(test):
 
 
 def __update_testcase_coverage__(tests):
-    line_dat_dir = os.path.join(__output_report_dir__, "line_dat")
+    records_by_nodeid = {}
+    for test in tests:
+        record = _testcase_record(test)
+        if record is not None:
+            records_by_nodeid[_testcase_nodeid(test["item"])] = record
+    coverage_dir_name = _code_coverage_dir_name(list(records_by_nodeid.values()))
+    line_dat_dir = os.path.join(__output_report_dir__, coverage_dir_name)
     cases_dir = os.path.join(line_dat_dir, "cases")
     os.makedirs(cases_dir, exist_ok=True)
     testcase_data = {}
@@ -305,6 +335,10 @@ def __update_testcase_coverage__(tests):
     simulators = set()
     status_counts = Counter()
     coverage_errors = 0
+    coverage_jobs = []
+    coverage_mode = os.environ.get("TOFFEE_CASE_COVERAGE_MODE", "full").strip().lower()
+    if coverage_mode not in {"full", "metadata"}:
+        raise ValueError("TOFFEE_CASE_COVERAGE_MODE must be 'full' or 'metadata'")
 
     for test in tests:
         item = test["item"]
@@ -316,7 +350,7 @@ def __update_testcase_coverage__(tests):
         status = str(test.get("status", {}).get("word") or "UNKNOWN").lower()
         status_counts[status] += 1
         functional = _testcase_functional_coverage(test)
-        record = _testcase_record(test)
+        record = records_by_nodeid.get(nodeid)
         case = {
             "id": case_id,
             "status": status,
@@ -350,25 +384,65 @@ def __update_testcase_coverage__(tests):
                 "testdata": record.test,
                 "worker": record.worker,
             }
-            relative = f"line_dat/cases/{case_id}/code_coverage.json"
-            try:
-                result = convert_case_coverage(
-                    record, os.path.join(cases_dir, case_id)
-                )
-                case["coverage"] = relative
-                case["code"] = {
-                    name: {
-                        "covered": metric.covered,
-                        "total": metric.total,
-                        "miss": metric.uncovered,
-                        "rate": metric.rate,
-                    }
-                    for name, metric in result.metrics.items()
-                }
-            except Exception as error:
-                case["error"] = repr(error)
-                coverage_errors += 1
+            case_report_name = "observation.json" if coverage_dir_name == "coverage_data" else "code_coverage.json"
+            relative = f"{coverage_dir_name}/cases/{case_id}/{case_report_name}"
+            if coverage_mode == "metadata":
+                # Coverage refinement performs one authoritative cumulative
+                # VDB query later. Avoid reopening the same VDB for every
+                # testcase when per-case atom attribution is not requested.
+                case["coverage_mode"] = "metadata"
+            else:
+                coverage_jobs.append((nodeid, record, os.path.join(cases_dir, case_id), relative))
         testcase_data[nodeid] = case
+
+    # VCS queries are independent read-only operations on the same VDB.  The
+    # Picker helper holds a shared lock, and every case has its own output
+    # directory, so bounded parallelism safely avoids reopening the VDB one
+    # testcase at a time.  Keep other providers serial until they explicitly
+    # document equivalent concurrency guarantees.
+    workers = 1
+    if coverage_jobs and all(record.simulator == "vcs" for _, record, _, _ in coverage_jobs):
+        try:
+            configured = int(os.environ.get("TOFFEE_CASE_COVERAGE_WORKERS", "0"))
+        except ValueError:
+            configured = 0
+        workers = configured if configured > 0 else min(8, os.cpu_count() or 1)
+        workers = min(max(1, workers), len(coverage_jobs))
+
+    def collect_case(job):
+        nodeid, record, output_dir, relative = job
+        try:
+            result = convert_case_coverage(record, output_dir)
+            return nodeid, relative, result, ""
+        except Exception as error:
+            return nodeid, relative, None, repr(error)
+
+    if workers == 1:
+        completed = map(collect_case, coverage_jobs)
+    else:
+        executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="toffee-vcs-coverage")
+        futures = [executor.submit(collect_case, job) for job in coverage_jobs]
+        completed = (future.result() for future in as_completed(futures))
+    try:
+        for nodeid, relative, result, error in completed:
+            case = testcase_data[nodeid]
+            if error:
+                case["error"] = error
+                coverage_errors += 1
+                continue
+            case["coverage"] = relative
+            case["code"] = {
+                name: {
+                    "covered": metric.covered,
+                    "total": metric.total,
+                    "miss": metric.uncovered,
+                    "rate": metric.rate,
+                }
+                for name, metric in result.metrics.items()
+            }
+    finally:
+        if workers > 1:
+            executor.shutdown(wait=True)
 
     report = {
         "schema_version": 1,
@@ -391,11 +465,12 @@ def __update_testcase_coverage__(tests):
             for bin_id, value in sorted(functional_index.items())
         },
     }
-    output = os.path.join(line_dat_dir, "testcase_coverage.json")
+    index_name = "testcases.json" if coverage_dir_name == "coverage_data" else "testcase_coverage.json"
+    output = os.path.join(line_dat_dir, index_name)
     with open(output, "w", encoding="utf-8") as stream:
         json.dump(report, stream, indent=2)
         stream.write("\n")
-    return "line_dat/testcase_coverage.json"
+    return f"{coverage_dir_name}/{index_name}"
 
 
 __report_info__ = {
