@@ -134,13 +134,8 @@ class ModuleCoverage:
     expr: set[int] = field(default_factory=set)
 
     def get_metric_set(self, metric_type: str) -> set[int]:
-        metric_map = {
-            "line": self.line,
-            "toggle": self.toggle,
-            "branch": self.branch,
-            "expr": self.expr,
-        }
-        return metric_map.get(metric_type, None)
+        # Metric fields share their name with the coverage type
+        return getattr(self, metric_type, None)
 
 
 @dataclass

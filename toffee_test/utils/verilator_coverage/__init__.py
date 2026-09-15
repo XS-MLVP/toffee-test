@@ -31,8 +31,7 @@ def verilator_coverage_to_lcov(coverages: list[tuple[VerilatorCoverage, int]], o
     outfile_dat = Path(outfile).with_suffix(".dat")
     with outfile_dat.open("w", encoding="utf-8") as f:
         f.write("# SystemC::Coverage-3\n")
-        for e, h in coverages:
-            f.write(f"C '{e}' {h}\n")
+        f.writelines(f"C '{e}' {h}\n" for e, h in coverages)
     cmd = [
         "verilator_coverage",
         "-write-info", outfile, outfile_dat,
