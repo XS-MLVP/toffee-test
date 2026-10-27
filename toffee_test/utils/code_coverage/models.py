@@ -77,16 +77,22 @@ class MetricSummary:
 class CodeCoverageResult:
     simulator: str
     metrics: dict[str, MetricSummary] = field(default_factory=dict)
+    # Provider-owned HTML entry URL relative to the final Toffee report.
+    # Keep the complete HTML directory beside the report for portable links.
     detail: str = ""
     summary_file: str = ""
     databases: list[str] = field(default_factory=list)
     ignore: list[Any] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     error: str = ""
+    # Optional presentation summary from the linked native report. Workflow
+    # metrics above retain their original DUT/filter/test selection semantics.
+    report_metrics: dict[str, MetricSummary] = field(default_factory=dict)
+    report_scope: str = ""
 
     def to_report_dict(self, grate: int = 99) -> dict[str, Any]:
-        line = self.metrics.get("line", MetricSummary())
-        return {
+        line = (self.report_metrics or self.metrics).get("line", MetricSummary())
+        result = {
             "simulator": self.simulator,
             # Preserve the existing template/report JSON contract.
             "hints": line.covered,
@@ -100,3 +106,9 @@ class CodeCoverageResult:
             "warnings": list(self.warnings),
             "error": self.error,
         }
+        if self.report_metrics:
+            result["report_metrics"] = {
+                name: metric.to_dict() for name, metric in self.report_metrics.items()
+            }
+            result["report_scope"] = self.report_scope
+        return result

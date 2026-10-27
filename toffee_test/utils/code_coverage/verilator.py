@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from ..verilator_coverage import convert_verilator_coverage as convert_legacy_verilator
+from .common import html_report_detail
 from .models import CodeCoverageResult, CoverageRecord, MetricSummary
 
 
@@ -116,8 +117,7 @@ def convert_verilator_coverage(
             f"genhtml failed with exit code {completed.returncode}; "
             f"see '{output_dir / 'genhtml.stderr.log'}'"
         )
-    if not (output_dir / "index.html").is_file():
-        raise RuntimeError(f"genhtml did not generate '{output_dir / 'index.html'}'")
+    detail = html_report_detail(output_dir, output_dir)
 
     summary_path = output_dir / "code_coverage.json"
     with summary_path.open(encoding="utf-8") as source:
@@ -130,7 +130,7 @@ def convert_verilator_coverage(
     return CodeCoverageResult(
         simulator="verilator",
         metrics=metrics,
-        detail=f"{output_dir.name}/index.html",
+        detail=detail,
         summary_file=f"{output_dir.name}/{summary_path.name}",
         databases=list(dict.fromkeys(record.database for record in records)),
         ignore=ignore,

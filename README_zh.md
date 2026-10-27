@@ -83,6 +83,21 @@ toffee_request 中提供的接口如下：
 pytest --toffee-report --case-coverage
 ```
 
+
+最终报告的 **Line Coverage → View Details** 打开覆盖率提供方返回的 HTML
+入口：VCS 使用原生 URG 报告，Verilator 保留 LCOV 页面。链接相对于最终报告，
+复制或提供网页服务时应保留整个报告目录及原生报告资源。生成错误和警告显示在
+表格旁；没有可统计的行时显示 N/A，仍保留原生详情入口以查看其他指标。
+延迟收集模式不生成详情页。
+
+新增仿真器适配器通过 `CodeCoverageResult(detail=...)` 返回相对 HTML 地址；
+可使用 `html_report_detail(report_dir, output_dir, entry_names=...)` 校验入口并
+编码路径。适配器负责生成报告和选择入口，报告层及模板无需按仿真器添加分支。
+适配器也可返回 `report_metrics` 和 `report_scope`，提供原生网页的展示汇总。
+VCS 从 URG 文本报告读取精确命中数和总数，首页与原生报告的完整层次范围一致
+（包含 picker 包装模块及数据库全部测试）；`metrics` 和规范化覆盖率 JSON
+继续保持验证使用的 DUT 查询范围。首页会注明范围，包装模块的百分比不代表 DUT 行覆盖率。
+
 此外，`--report-name` 参数可以指定报告名称，`--report-dir` 参数可以指定报告存放目录。
 
 ## 更多资源

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import json
 import fnmatch
 import hashlib
@@ -9,6 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .common import html_report_detail
 from .models import CodeCoverageResult, CoverageRecord, MetricSummary
 
 
@@ -23,6 +25,43 @@ def find_urg_entry(output_dir: Path) -> Path | None:
             return candidate
     html_files = sorted(output_dir.rglob("*.html"))
     return html_files[0] if html_files else None
+
+
+def _load_urg_report_metrics(report_dir: Path) -> dict[str, MetricSummary]:
+    """Read exact native totals from URG's text dashboard generated with ratios.
+
+    The dashboard covers the full reported hierarchy, including generated
+    wrappers. It must not replace Picker's DUT-only query data used for gaps.
+    """
+    path = report_dir / "dashboard.txt"
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    match = re.search(
+        r"^Total Coverage Summary[^\n]*\n([^\n]+)\n([^\n]+)", text, re.MULTILINE
+    )
+    if match is None:
+        raise ValueError("URG text dashboard has no total coverage summary")
+    names = match[1].split()
+    # SCORE is a single composite percentage; every metric has a rate and an
+    # exact covered/total ratio. Accept unavailable metrics without inventing 0%.
+    values = re.findall(r"(--|\d+(?:\.\d+)?)\s+(\d+)/(\d+)", match[2])
+    metric_names = [name for name in names if name != "SCORE"]
+    if len(values) != len(metric_names):
+        raise ValueError("URG text dashboard is missing coverage ratios")
+    aliases = {"COND": "condition", "FSM": "fsm"}
+    metrics = {}
+    for name, (rate, covered, total) in zip(metric_names, values):
+        covered, total = int(covered), int(total)
+        if covered > total:
+            raise ValueError("URG text dashboard has invalid coverage counts")
+        metrics[aliases.get(name, name.lower())] = MetricSummary(
+            covered=covered, total=total, uncovered=total - covered,
+            rate=float(rate) if rate != "--" else 0.0,
+            available=rate != "--" and total > 0,
+            details_available=total > 0,
+        )
+    return metrics
 
 
 def _resolve_urg(urg: str | None, vcs_home: str | None) -> str:
@@ -930,7 +969,7 @@ def convert_vcs_coverage(
     command = [executable, "-full64"]
     for database in databases:
         command.extend(("-dir", database))
-    command.extend(("-report", str(urg_output)))
+    command.extend(("-format", "both", "-show", "ratios", "-report", str(urg_output)))
 
     env = os.environ.copy()
     if vcs_home:
@@ -953,9 +992,17 @@ def convert_vcs_coverage(
         raise RuntimeError(f"URG failed ({reason}); see '{stderr_log}'")
 
     warnings = []
+    report_metrics = {}
+    try:
+        report_metrics = _load_urg_report_metrics(urg_output)
+    except ValueError as error:
+        warnings.append(f"Native coverage summary unavailable: {error}")
+    report_scope = "Native report: full hierarchy, including generated wrappers and all database tests."
     if completed.stderr.strip():
         warnings.append(f"URG emitted diagnostics; see {output_dir.name}/{stderr_log.name}")
-    detail = f"{output_dir.name}/{entry.relative_to(output_dir).as_posix()}"
+    detail = html_report_detail(
+        urg_output, output_dir, entry_names=(entry.relative_to(urg_output).as_posix(),)
+    )
     summary_path = output_dir / ("cumulative.json" if normalized_layout else "code_coverage.json")
     summary_file = f"{output_dir.name}/{summary_path.name}"
     final_report = _build_code_coverage_report(
@@ -968,6 +1015,11 @@ def convert_vcs_coverage(
             for path, lines in sorted(line_ranges.items())
         ],
     )
+    if report_metrics:
+        final_report["metadata"]["report_summary"] = {
+            "scope": report_scope,
+            "metrics": {name: metric.to_dict() for name, metric in report_metrics.items()},
+        }
     if normalized_layout:
         _externalize_atom_catalog(final_report, output_dir)
         _compact_cumulative(final_report)
@@ -998,4 +1050,6 @@ def convert_vcs_coverage(
         databases=databases,
         ignore=ignore,
         warnings=warnings,
+        report_metrics=report_metrics,
+        report_scope=report_scope,
     )

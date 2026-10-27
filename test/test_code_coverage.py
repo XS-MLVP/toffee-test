@@ -1002,3 +1002,39 @@ def test_process_context_does_not_generate_case_index_without_switch(tmp_path):
 
     assert context["case_coverage"] is None
     assert not (tmp_path / "report" / "line_dat" / "testcase_coverage.json").exists()
+
+
+def test_vcs_final_report_uses_native_summary_without_changing_dut_data(tmp_path):
+    database = make_vdb(tmp_path / 'Top.vdb')
+    helper = make_fake_helper(tmp_path)
+    urg = make_fake_urg(tmp_path)
+    with urg.open('a') as stream:
+        stream.write("(report / 'dashboard.txt').write_text('Total Coverage Summary\\nSCORE LINE TOGGLE\\n66.67 33.33 1/3 100.00 4/4\\n')\n")
+    result = convert_code_coverage(
+        [CoverageRecord('vcs', str(database), helper=str(helper))],
+        tmp_path / 'coverage_data', urg=str(urg),
+    )
+    assert result.metrics['line'].covered == 2
+    assert result.metrics['line'].total == 5
+    rendered = result.to_report_dict()
+    assert (rendered['hints'], rendered['total']) == (1, 3)
+    assert 'generated wrappers' in rendered['report_scope']
+    report = json.loads((tmp_path / result.summary_file).read_text())
+    assert report['metrics']['line']['total'] == 5
+    assert report['metadata']['report_summary']['metrics']['line']['total'] == 3
+    assert result.detail.endswith('dashboard.html')
+
+
+def test_vcs_bad_native_summary_keeps_dut_metrics_and_warns(tmp_path):
+    database = make_vdb(tmp_path / 'Top.vdb')
+    helper = make_fake_helper(tmp_path)
+    urg = make_fake_urg(tmp_path)
+    with urg.open('a') as stream:
+        stream.write("(report / 'dashboard.txt').write_text('invalid summary')\n")
+    result = convert_code_coverage(
+        [CoverageRecord('vcs', str(database), helper=str(helper))],
+        tmp_path / 'coverage_data', urg=str(urg),
+    )
+    assert result.to_report_dict()['total'] == 5
+    assert not result.report_metrics
+    assert any('Native coverage summary unavailable' in warning for warning in result.warnings)

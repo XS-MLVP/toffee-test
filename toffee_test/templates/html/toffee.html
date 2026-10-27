@@ -314,23 +314,38 @@ openFunctionalDetailModal();
             <td>N/A</td>
             <td>N/A</td>
             {% else %}
-            {% set line_rate = 0 %}
-            {% if coverages.line.total != 0 %}
-            {% set line_rate = (coverages.line.hints / coverages.line.total * 100) %}
-            {% endif %}
             <td>
+              {% if coverages.line.total %}
+              {% set line_rate = (coverages.line.hints / coverages.line.total * 100) %}
               <span style="font-weight: bold; color: {% if line_rate < coverages.line.grate %} red {% else %} green {% endif %};">{{ line_rate|round(2) }}%</span>
+              {% else %}
+              N/A
+              {% endif %}
             </td>
             <td>{{ coverages.line.hints }}</td>
             <td>{{ coverages.line.total }}</td>
             {% if coverages.line.detail %}
-            <td><a href="{{ coverages.line.detail }}" target="_blank">View Details</a></td>
+            <td><a href="{{ coverages.line.detail|e }}" target="_blank" rel="noopener noreferrer">View Details</a></td>
             {% else %}
             <td>N/A</td>
             {% endif %}
             {% endif %}
           </tr>
         </table>
+        {% if coverages.line %}
+        {% if coverages.line.report_scope %}
+        <p>{{ coverages.line.report_scope|e }}</p>
+        {% endif %}
+        {% if coverages.line.error %}
+        <p role="alert">Coverage report generation failed: {{ coverages.line.error|e }}</p>
+        {% endif %}
+        {% for warning in coverages.line.warnings|default([]) %}
+        <p>{{ warning|e }}</p>
+        {% endfor %}
+        {% if coverages.line.collection_mode == 'deferred' %}
+        <p>Coverage collection is deferred; details are not generated for this run.</p>
+        {% endif %}
+        {% endif %}
       </td>
       <td>
         <h3>Functional Coverage</h3>

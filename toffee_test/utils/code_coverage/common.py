@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .models import MetricSummary
 
@@ -36,3 +37,31 @@ def load_provider_summary(path: str | Path, simulator: str) -> dict[str, MetricS
             details_available=bool(raw.get("details_available", False)),
         )
     return metrics
+
+
+def html_report_detail(
+    report_dir: str | Path,
+    output_dir: str | Path,
+    *,
+    entry_names: tuple[str, ...] = ("index.html",),
+) -> str:
+    """Return a portable URL to a provider's generated HTML report.
+
+    Providers own report generation and entry preference. The report directory
+    (including CSS, JS and child pages) stays under the coverage output directory;
+    the final Toffee report links to it without knowing the simulator.
+    """
+    report_dir = Path(report_dir).resolve()
+    output_dir = Path(output_dir).resolve()
+    if not report_dir.is_relative_to(output_dir):
+        raise ValueError("HTML report must be inside the coverage output directory")
+    entry = next(
+        (report_dir / name for name in entry_names if (report_dir / name).is_file()),
+        None,
+    )
+    if entry is None:
+        raise FileNotFoundError(f"coverage provider did not generate an HTML entry in '{report_dir}'")
+    entry = entry.resolve()
+    if not entry.is_relative_to(output_dir):
+        raise ValueError("HTML entry must be inside the coverage output directory")
+    return quote(entry.relative_to(output_dir.parent).as_posix(), safe="/")

@@ -92,6 +92,26 @@ Use the `@toffee_test.testcase` decorator to mark test functions, making them re
 
 ### Generating Test Reports
 
+The final report's **Line Coverage → View Details** opens the HTML entry supplied
+by the coverage provider: VCS uses its native URG dashboard; Verilator uses the
+existing LCOV page. Links are relative to the final report, so copy or serve the
+whole report directory, including native HTML assets. Generation errors and
+warnings are shown beside the table; zero available lines display N/A while
+keeping a native details link for other metrics. Deferred collection generates
+no details page.
+
+New simulator adapters return `CodeCoverageResult(detail=...)` with a relative
+HTML entry URL. `html_report_detail(report_dir, output_dir, entry_names=...)`
+validates the entry and encodes its path. The adapter owns report generation
+and entry selection; the reporter and template require no simulator branches.
+Adapters can also return `report_metrics` and `report_scope` for the linked native
+report's display summary. VCS reads exact covered/total ratios from URG's text
+dashboard: the homepage then matches the full native hierarchy (including Picker
+wrappers and all database tests), while `metrics` and normalized coverage JSON
+retain the DUT-only query scope used by verification. The scope is shown on the
+homepage; a wrapper percentage must not be interpreted as DUT line coverage.
+
+
 By adding the `--toffee-report` parameter to the pytest command line, you can generate a toffee test report.
 
 Add `--case-coverage` to generate normalized code coverage for every testcase.
