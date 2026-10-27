@@ -5,6 +5,7 @@ import uuid
 from collections import Counter
 from datetime import datetime
 from typing import Union
+import pytest
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -22,6 +23,7 @@ from .utils.code_coverage import (
 
 LOCK_FILE_FUNC_COV = "/tmp/toffee_func_cov.lock"
 LOCK_FILE_LINE_COV = "/tmp/toffee_line_cov.lock"
+_AUTO_COVERAGE_DUT = object()
 
 def get_default_report_name():
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -640,14 +642,34 @@ def set_code_coverage(request, record: CoverageRecord | dict):
             })
 
 
-def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *, dut=None):
+def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *, dut=_AUTO_COVERAGE_DUT):
     """Record coverage using the DUT simulator and its actual native database.
 
-    Without a DUT this retains the legacy Verilator contract. VCS requires a
-    generated DUT exposing GetCoveragePath and a sibling coverage/coverage helper.
-    The SetCoverage argument selects testdata, not the VDB directory itself.
+    When omitted, resolve only the current fixture's cached result during teardown.
+    Explicit None retains raw Verilator records, including synthetic template tests.
+    VCS requires GetCoveragePath and a sibling coverage/coverage helper. This records
+    metadata only; the original fixture remains responsible for calling Finish.
     """
     assert isinstance(datfile, str), "datfile should be a string"
+    if dut is _AUTO_COVERAGE_DUT:
+        dut = None
+        fixture_name = getattr(request, "fixturename", None)
+        get_fixture = getattr(request, "getfixturevalue", None)
+        if fixture_name and callable(get_fixture):
+            try:
+                candidate = get_fixture(fixture_name)
+            except pytest.FixtureLookupError:
+                candidate = None
+            if candidate is not None and (
+                isinstance(getattr(candidate, "SIMULATOR", None), str)
+                or callable(getattr(candidate, "GetSimulator", None))
+            ):
+                metrics = getattr(candidate, "GetCovMetrics", None)
+                if callable(metrics) and metrics() in (None, 0):
+                    return
+                dut = candidate
+        if dut is None and datfile.lower().endswith(".vdb"):
+            raise RuntimeError("VCS coverage requires the current yielded DUT fixture or an explicit dut argument")
     if ignore is None:
         ignore = []
     elif isinstance(ignore, str):

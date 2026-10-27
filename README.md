@@ -11,16 +11,27 @@ toffee-test is a pytest plugin that provides testing support for the toffee fram
 
 ## Installation
 
-For existing fixtures, `set_line_coverage(request, selected_path, dut=dut)` records
-VCS testdata separately from the actual VDB returned by `GetCoveragePath()` and
-discovers the generated `coverage/coverage` executable beside the DUT module.
-Old VCS exports without these capabilities fail explicitly and must be regenerated;
-changing a filename to `.vdb` is insufficient. Calls without `dut` retain the
-legacy Verilator contract. Always finalize the DUT even if reporting raises.
+Existing yield fixtures can keep `set_line_coverage(request, selected_path, ignore=...)`
+followed by `dut.Finish()`. During teardown, the reporter resolves only the current
+fixture through pytest, records VCS testdata separately from `GetCoveragePath()`, and
+finds `coverage/coverage` beside the generated DUT module. It records metadata without
+querying coverage before finalization. Mock or coverage-disabled DUTs create no native
+coverage record. Outside a DUT fixture, pass `dut=dut` explicitly for VCS; the `.vdb`
+suffix alone is not sufficient. Explicit `dut=None` retains raw Verilator registration.
+Old exports lacking metadata/helper support fail explicitly and must be regenerated.
+The fixture still owns `Finish()`; use a pytest finalizer when cleanup must survive
+exceptions in reporting or other teardown code.
 
 VCS queries run the generated helper directly using its schema-version-1 JSON
 protocol and a 120-second timeout; no xcomm `CoverageClient` binding is required.
 Native query failures and incompatible schemas fail explicitly.
+
+Run `pytest -q tests/test_coverage_fixture.py` for the unchanged-fixture contract.
+For native acceptance, set `TOFFEE_NATIVE_DUT_DIR` to a compiled coverage-enabled
+Adder package and run `pytest -q tests/test_coverage_native_fixture.py` in its simulator
+environment. This copies the package to a temporary directory, checks finalization,
+and queries actual testcase coverage through the normal report provider without
+modifying the original build.
 
 - Properly install [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and its dependencies.
 

@@ -87,10 +87,11 @@ pytest --toffee-report --case-coverage
 
 ## 更多资源
 
-现有 fixture 可使用 `set_line_coverage(request, selected_path, dut=dut)` 上报 VCS：
-`selected_path` 对应 testdata 名称，真实 VDB 由 `GetCoveragePath()` 获取，查询程序定位到
-DUT 模块旁的 `coverage/coverage`。缺少接口或查询程序的旧包必须重新生成，不能仅修改后缀。
-不传 `dut` 时保留原 Verilator 契约；无论上报是否成功，都应在 `finally` 中调用 `Finish()`。
+现有 yield fixture 可保持 `set_line_coverage(request, selected_path, ignore=...)`，随后按原顺序调用 `dut.Finish()`。
+toffee-test 在 teardown 中通过 pytest 获取当前 fixture 的 DUT，自动关联 testdata、`GetCoveragePath()` 返回的真实 VDB 和模块旁的 `coverage/coverage`。
+此时只登记元数据，不提前查询未完成的覆盖率；Mock 或未启用覆盖率的 DUT 不生成原生覆盖率记录。
+在 DUT fixture 外调用时，VCS 仍需显式传 `dut=dut`，不能仅凭 `.vdb` 后缀推断；显式 `dut=None` 保留原 Verilator 登记行为。
+缺少元数据接口或查询程序的旧包必须重新生成。`Finish()` 仍由 fixture 管理；若要覆盖上报或其他 teardown 异常，建议注册 pytest finalizer。
 
 VCS 查询直接调用生成包的 helper，使用 schema-version-1 JSON 协议及 120 秒超时，
 不再依赖 xcomm 的 `CoverageClient` 绑定。原生查询失败或 schema 不匹配会明确报错。
