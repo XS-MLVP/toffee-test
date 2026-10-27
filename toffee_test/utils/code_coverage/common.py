@@ -7,21 +7,21 @@ from typing import Any
 from .models import MetricSummary
 
 
-def load_schema_v2_summary(path: str | Path, simulator: str) -> dict[str, MetricSummary]:
+def load_provider_summary(path: str | Path, simulator: str) -> dict[str, MetricSummary]:
     summary_path = Path(path)
     with summary_path.open(encoding="utf-8") as source:
         report: dict[str, Any] = json.load(source)
 
-    if report.get("schema_version") != 2:
-        raise ValueError(f"unsupported coverage schema in '{summary_path}': expected version 2")
+    if report.get("schema_version") not in {1, 5}:
+        raise ValueError(f"unsupported coverage schema in '{summary_path}': expected version 1")
     provider = report.get("provider") or {}
-    actual_simulator = str(provider.get("simulator") or "").lower()
+    actual_simulator = str(report.get("simulator") or provider.get("simulator") or "").lower()
     if actual_simulator and actual_simulator != simulator:
         raise ValueError(
             f"coverage summary '{summary_path}' is for {actual_simulator}, expected {simulator}"
         )
 
-    raw_metrics = (report.get("summary") or {}).get("metrics") or {}
+    raw_metrics = report.get("metrics") or (report.get("summary") or {}).get("metrics") or {}
     metrics: dict[str, MetricSummary] = {}
     for name, raw in raw_metrics.items():
         total = int(raw.get("total", 0))

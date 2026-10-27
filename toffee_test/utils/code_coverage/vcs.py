@@ -13,8 +13,7 @@ from .models import CodeCoverageResult, CoverageRecord, MetricSummary
 
 
 VCS_METRICS = ("line", "branch", "toggle", "condition", "fsm")
-PICKER_VCS_SCHEMA_VERSION = 4
-PICKER_VCS_CONTRACT_VERSION = 2
+PICKER_VCS_SCHEMA_VERSION = 1
 
 
 def find_urg_entry(output_dir: Path) -> Path | None:
@@ -51,21 +50,8 @@ def _resolve_helper(records: list[CoverageRecord], helper: str | None) -> str:
         if record.helper and Path(record.helper).is_file():
             return str(Path(record.helper))
 
-    for record in reversed(records):
-        if not record.summary:
-            continue
-        summary = Path(record.summary)
-        if not summary.is_file():
-            continue
-        try:
-            raw = json.loads(summary.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        candidate = Path(str((raw.get("provider") or {}).get("helper") or ""))
-        if candidate.is_file():
-            return str(candidate)
     raise FileNotFoundError(
-        "picker coverage helper was not recorded; regenerate the DUT package and coverage summaries"
+        "picker coverage executable was not recorded; regenerate the DUT package"
     )
 
 
@@ -119,34 +105,17 @@ def _canonical_hash(value: Any) -> str:
     ).hexdigest()
 
 
-def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], detail_kind: str) -> dict[str, Any]:
-    """Preserve exact provider identity and publish deterministic group membership."""
-    if detail_kind not in {"covered", "uncovered", "all"}:
-        raise ValueError(f"unsupported atom inventory observation: {detail_kind}")
-    if detail_kind == "all":
-        unique_items: dict[tuple[Any, ...], dict[str, Any]] = {}
-        for item in items:
-            key = tuple(item.get(name) for name in (
-                "kind", "file", "module", "instance", "line", "column", "object", "detail",
-                "atom_kind", "native_id", "native_name", "from_state", "to_state",
-            ))
-            previous = unique_items.get(key)
-            if previous is None or int(item.get("covered", 0)) > int(previous.get("covered", 0)):
-                unique_items[key] = item
-        items = list(unique_items.values())
-    provider = raw.get("provider") or {}
-    provider_identity = str(provider.get("identity") or "picker.vcs.ucapi")
+def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a deterministic Toffee gap catalog from Picker item observations."""
     provider_schema_version = int(raw.get("schema_version") or 0)
-    identity_fields = []
-    for item in [*(raw.get("items") or []), *(raw.get("covered_items") or [])]:
-        identity_fields.append({
-            key: item.get(key) for key in
-            ("kind", "file", "module", "instance", "line", "column", "object", "detail",
-             "atom_kind", "native_id", "native_name", "from_state", "to_state")
-        })
-    design_revision = str(raw.get("design_revision") or "")
-    if not design_revision:
-        design_revision = _canonical_hash(sorted(identity_fields, key=lambda value: json.dumps(value, sort_keys=True)))
+    # Picker reports the current uncovered set, not a complete design inventory.
+    # Version the accepted gap catalog locally instead of requiring a provider
+    # owned design revision.
+    design_revision = str(raw.get("design_revision") or _canonical_hash({
+        "simulator": raw.get("simulator") or "vcs",
+        "metrics": raw.get("metrics") or (raw.get("summary") or {}).get("metrics") or {},
+        "items": items,
+    }))
     atoms: dict[str, dict[str, Any]] = {}
     duplicates: set[str] = set()
     groups: dict[str, dict[str, Any]] = {}
@@ -155,7 +124,7 @@ def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], deta
         raw_object = str(item.get("object") or "")
         object_name, bit = _split_bit_object(raw_object) if metric == "toggle" else (raw_object, None)
         anchor_payload = {
-            "file_logical_id": Path(str(item.get("file") or "")).name,
+            "file_logical_id": str(item.get("file") or ""),
             "module": str(item.get("module") or ""),
             "object": object_name,
             "metric": metric,
@@ -163,8 +132,6 @@ def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], deta
             "column_fallback": int(item.get("column") or 0),
         }
         identity = {
-            "provider_identity": provider_identity,
-            "design_revision": design_revision,
             "file_logical_id": anchor_payload["file_logical_id"],
             "module": anchor_payload["module"],
             "instance": str(item.get("instance") or ""),
@@ -188,13 +155,15 @@ def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], deta
             "atom_id": atom_id,
             "identity": identity,
             "source_location": {
-                "file": str(item.get("file") or ""), "line": int(item.get("line") or 0),
+                "file": str(item.get("file") or ""),
+                # Keep Toffee/UCAgent catalog aliases without adding them to
+                # the Picker IPC protocol.
+                "logical_file": str(item.get("file") or ""),
+                "resolved_file": str(item.get("file") or ""),
+                "line": int(item.get("line") or 0),
                 "column": int(item.get("column") or 0),
             },
-            "observation": (
-                ("covered" if int(item.get("covered", 0)) > 0 else "uncovered")
-                if detail_kind == "all" else detail_kind
-            ),
+            "observation": "uncovered",
         }
         atoms[atom_id] = atom
         excluded = {"bit"}
@@ -206,6 +175,7 @@ def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], deta
             excluded.update({"native_id", "native_name", "to_state", "transition_or_arm"})
         group_identity = {key: value for key, value in identity.items() if key not in excluded}
         group_key = "group:" + _canonical_hash(group_identity)
+        atom["group_key"] = group_key
         groups.setdefault(group_key, {"group_key": group_key, "identity": group_identity, "members": []})["members"].append(atom_id)
     output_groups = []
     for group in groups.values():
@@ -224,10 +194,7 @@ def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], deta
     expected_by_metric = {}
     for metric, value in ((raw.get("summary") or {}).get("metrics") or {}).items():
         total = int(value.get("total", 0)); uncovered = int(value.get("uncovered", total-int(value.get("covered", 0))))
-        expected_by_metric[metric] = (
-            total if detail_kind == "all"
-            else (total-uncovered if detail_kind == "covered" else uncovered)
-        )
+        expected_by_metric[metric] = uncovered
     unresolved = [
         {"metric": metric, "provider_metric_items": expected_by_metric.get(metric, 0),
          "enumerated_atoms": enumerated_by_metric.get(metric, 0),
@@ -236,13 +203,16 @@ def _build_atom_inventory(raw: dict[str, Any], items: list[dict[str, Any]], deta
         if expected_by_metric.get(metric, 0) != rate_atoms_by_metric.get(metric, 0)
     ]
     return {
-        "schema_version": 1,
-        "provider_identity": provider_identity,
+        "schema_version": 2,
         "provider_schema_version": provider_schema_version,
-        "toffee_schema_version": 4,
+        "toffee_schema_version": 5,
         "design_revision": design_revision,
-        "inventory_revision": str(raw.get("inventory_revision") or _canonical_hash(sorted(atoms))),
-        "observation": detail_kind,
+        "inventory_revision": _canonical_hash({
+            "design_revision": design_revision,
+            "provider_revision": str(raw.get("inventory_revision") or ""),
+            "atom_ids": sorted(atoms),
+        }),
+        "observation": "uncovered",
         "atoms": ordered_atoms,
         "groups": sorted(output_groups, key=lambda value: value["group_key"]),
         "reconciliation": {
@@ -350,7 +320,7 @@ def _apply_ignores(raw: dict[str, Any], ignore: list[str]) -> tuple[list[str], d
         )
 
     ignored_items: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for field in ("items", "covered_items"):
+    for field in ("items",):
         kept_items = []
         for item in raw.get(field) or []:
             if not ignored_line(item):
@@ -391,23 +361,12 @@ def _build_code_coverage_report(
     tests: list[str],
     html_report: str,
     excludes: list[str],
-    detail_kind: str = "uncovered",
 ) -> dict[str, Any]:
-    if detail_kind not in {"covered", "uncovered"}:
-        raise ValueError(f"unsupported coverage detail kind: {detail_kind}")
-    is_covered = detail_kind == "covered"
-    count_key = "covered" if is_covered else "miss"
-    items_key = "covered_items" if is_covered else "items"
-    item_adjective = "covered" if is_covered else "missing"
     raw_metrics = (raw.get("summary") or {}).get("metrics") or {}
     overview_total, overview_miss = _metric_maps(raw_metrics)
     metric_names = tuple(name for name in VCS_METRICS if name in overview_total)
-    overview_values = (
-        {name: total - overview_miss[name] for name, total in overview_total.items()}
-        if is_covered
-        else overview_miss
-    )
-    items = raw.get(items_key) or []
+    overview_values = overview_miss
+    items = raw.get("items") or []
     items_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for item in items:
         key = (str(item.get("file") or ""), str(item.get("module") or ""))
@@ -418,20 +377,12 @@ def _build_code_coverage_report(
     for file_path in sorted(raw_files):
         raw_file = raw_files[file_path]
         file_total, file_miss = _metric_maps(raw_file.get("metrics") or {})
-        file_values = (
-            {name: total - file_miss[name] for name, total in file_total.items()}
-            if is_covered
-            else file_miss
-        )
+        file_values = file_miss
         modules: dict[str, Any] = {}
         for module_name in sorted((raw_file.get("modules") or {})):
             raw_module = raw_file["modules"][module_name]
             module_total, module_miss = _metric_maps(raw_module.get("metrics") or {})
-            module_values = (
-                {name: total - module_miss[name] for name, total in module_total.items()}
-                if is_covered
-                else module_miss
-            )
+            module_values = module_miss
             scoped_items = items_by_scope.get((file_path, module_name), [])
             line_ranges = _merge_ranges(
                 {
@@ -521,7 +472,7 @@ def _build_code_coverage_report(
             ]
             module_report = {
                 "total": module_total,
-                count_key: module_values,
+                "miss": module_values,
                 "line": line_ranges,
                 "toggle": toggles,
                 "branch": branches,
@@ -533,11 +484,11 @@ def _build_code_coverage_report(
             modules[module_name] = module_report
         files[file_path] = {
             "total": file_total,
-            count_key: file_values,
+            "miss": file_values,
             "modules": modules,
         }
 
-    atom_inventory = _build_atom_inventory(raw, items, detail_kind)
+    atom_inventory = _build_atom_inventory(raw, items)
     detail_counts = {name: 0 for name in VCS_METRICS}
     rate_detail_counts = {name: 0 for name in VCS_METRICS}
     group_counts = {name: 0 for name in VCS_METRICS}
@@ -554,16 +505,28 @@ def _build_code_coverage_report(
             "enumerated_atoms": detail_counts.get(name, 0),
             "enumerated_rate_atoms": rate_detail_counts.get(name, 0),
             "gap_count": group_counts.get(name, 0),
-            "unresolved": abs(int(metric_items.get(name, 0)) - detail_counts.get(name, 0)),
+            "unresolved": abs(int(metric_items.get(name, 0)) - rate_detail_counts.get(name, 0)),
         }
         for name in metric_names
         if name in overview_total
     }
 
     return {
-        "schema_version": 4,
-        "description": f"Code coverage summary. `{detail_kind}.data` contains {detail_kind} items.",
+        "schema_version": 5,
+        "description": "Code coverage summary. `uncovered.data` contains current gaps.",
         "simulator": "vcs",
+        "snapshot": {
+            "design_revision": atom_inventory["design_revision"],
+            "inventory_revision": atom_inventory["inventory_revision"],
+            "tests": tests,
+            "artifacts": [database],
+        },
+        "metrics": {
+            name: dict(value)
+            for name, value in ((raw.get("summary") or {}).get("metrics") or {}).items()
+            if name in metric_names
+        },
+        "gaps": files,
         "metadata": {
             "database": database,
             "tests": tests,
@@ -579,24 +542,24 @@ def _build_code_coverage_report(
         },
         "overview": {
             "total": overview_total,
-            count_key: overview_values,
+            "miss": overview_values,
         },
         "detail_summary": detail_summary,
         "atom_inventory": atom_inventory,
-        detail_kind: {
+        "uncovered": {
             "schema": {
                 "file_path": {
                     "total": list(metric_names),
-                    count_key: list(metric_names),
+                    "miss": list(metric_names),
                     "modules": {
                         "module_name": {
                             "total": list(metric_names),
-                            count_key: list(metric_names),
+                            "miss": list(metric_names),
                             "line": ["inclusive start-end ranges"],
-                            "toggle": [f"base signal objects with {item_adjective} transitions and bit ranges"],
-                            "branch": [f"branch objects with {item_adjective} arms"],
-                            **({"condition": [f"condition expressions with {item_adjective} native bins"]} if "condition" in metric_names else {}),
-                            **({"fsm": [f"FSM objects with {item_adjective} states and transitions"]} if "fsm" in metric_names else {}),
+                            "toggle": ["base signal objects with missing transitions and bit ranges"],
+                            "branch": ["branch objects with missing arms"],
+                            **({"condition": ["condition expressions with missing native bins"]} if "condition" in metric_names else {}),
+                            **({"fsm": ["FSM objects with missing states and transitions"]} if "fsm" in metric_names else {}),
                         }
                     },
                 }
@@ -607,49 +570,45 @@ def _build_code_coverage_report(
 
 
 def _coverage_item_dict(item: Any) -> dict[str, Any]:
+    location = item.location
+    file = str(getattr(location, "file", "") or "")
     return {
         "kind": str(getattr(item, "kind_name", "") or ""),
-        "file": str(item.location.file),
-        "line": int(item.location.line),
-        "column": int(item.location.column),
+        "file": file,
+        "line": int(getattr(location, "line", 0)),
+        "column": int(getattr(location, "column", 0)),
         "module": str(item.module),
         "instance": str(item.instance),
         "object": str(item.object),
-        "covered": int(item.covered),
-        "coverable": int(item.coverable),
         "count": int(item.count),
-        "status": int(item.status),
         "detail": str(item.detail),
-        "atom_kind": str(item.atom_kind),
-        "native_id": str(item.native_id),
-        "native_name": str(item.native_name),
-        "from_state": str(item.from_state),
-        "to_state": str(item.to_state),
-        "counts_toward_rate": bool(item.counts_toward_rate),
+        "covered": 0,
+        "coverable": 1,
+        "counts_toward_rate": True,
     }
 
 
-def _report_object_to_raw(report: Any, xsp: Any) -> dict[str, Any]:
-    def item_dict(item: Any) -> dict[str, Any]:
-        value = _coverage_item_dict(item)
-        value["kind"] = str(xsp.CoverageKindName(item.kind))
-        return value
-
-    items = [item_dict(item) for item in report.items]
-    covered_items = [item_dict(item) for item in report.covered_items]
+def _normalize_picker_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Normalize the native helper JSON without requiring a separate xcomm ABI."""
+    items = []
+    for raw_item in report.get("items", []):
+        item = {name: raw_item.get(name, default) for name, default in {
+            "kind": "", "file": "", "line": 0, "column": 0, "module": "",
+            "instance": "", "object": "", "count": 0, "detail": "",
+        }.items()}
+        item.update(covered=0, coverable=1, counts_toward_rate=True)
+        if item["kind"] == "fsm" and "->" not in item.get("detail", ""):
+            item["atom_kind"] = "fsm_auxiliary"
+            item["counts_toward_rate"] = False
+        items.append(item)
     metrics = {
-        str(xsp.CoverageKindName(metric.kind)): {
-            "covered": int(metric.covered), "total": int(metric.total),
-            "uncovered": int(metric.uncovered), "rate": float(metric.rate),
-            "available": bool(metric.available),
-            "details_available": bool(getattr(metric, "details_available", True)),
-        }
-        for metric in report.metrics
+        name: {**value, "available": True, "details_available": True}
+        for name, value in (report.get("metrics") or report.get("summary", {}).get("metrics", {})).items()
     }
     unique: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for item in [*items, *covered_items]:
+    for item in items:
         key = tuple(item.get(name) for name in (
-            "kind", "file", "module", "instance", "line", "column", "object",
+            "kind", "source_id", "logical_file", "module", "instance", "line", "column", "object",
             "detail", "atom_kind", "native_id", "from_state", "to_state",
         ))
         previous = unique.get(key)
@@ -670,24 +629,12 @@ def _report_object_to_raw(report: Any, xsp: Any) -> dict[str, Any]:
             for value in target.values():
                 value["uncovered"] = value["total"] - value["covered"]
                 value["rate"] = 100.0 * value["covered"] / value["total"] if value["total"] else 0.0
-    provider = report.provider
     return {
-        "schema_version": int(report.schema_version),
-        "success": bool(report.success),
-        "provider": {
-            "simulator": str(provider.simulator), "backend": str(provider.backend),
-            "database": str(provider.database), "helper": str(provider.helper),
-            "identity": str(provider.identity), "identity_version": int(provider.identity_version),
-            "contract_version": int(provider.contract_version),
-        },
-        "query": {"kinds": list(metrics), "tests": [str(value) for value in report.query.tests]},
-        "design_revision": str(getattr(report, "design_revision", "") or ""),
-        "inventory_revision": str(getattr(report, "inventory_revision", "") or ""),
+        **report,
+        "metrics": metrics,
         "summary": {"metrics": metrics, "total_uncovered": len(items)},
         "breakdown": {"files": files},
         "items": items,
-        "covered_items": covered_items,
-        "errors": [str(value) for value in report.errors],
     }
 
 
@@ -695,40 +642,26 @@ def _query_picker_helper(
     helper: str,
     database: str,
     tests: list[str],
-    *,
-    detail_mode: str,
 ) -> dict[str, Any]:
-    try:
-        import xspcomm as xsp
-    except ImportError as error:
-        raise RuntimeError(
-            "xspcomm CoverageClient is required for VCS coverage; run Toffee from the generated DUT environment"
-        ) from error
-    client = xsp.CoverageClient("vcs", "coverage-helper", database, helper)
-    query = xsp.CoverageQuery()
-    for name in VCS_METRICS:
-        query.kinds.push_back(xsp.CoverageKindFromString(name))
+    """Query the isolated VCS helper with a bounded execution time."""
+    command = [helper, "--database", database]
+    for metric in VCS_METRICS:
+        command.extend(["--kind", metric])
     for test in tests:
-        query.tests.push_back(test)
-    if detail_mode not in {"all", "covered", "uncovered", "summary"}:
-        raise ValueError(f"unsupported VCS detail mode: {detail_mode}")
-    query.detail_mode = detail_mode
-    report = client.Query(query)
-    if not report.success:
-        raise RuntimeError(f"picker coverage query failed: {list(report.errors) or client.LastError()}")
-    result = _report_object_to_raw(report, xsp)
-    provider = result["provider"]
-    if (
-        result["schema_version"] != PICKER_VCS_SCHEMA_VERSION
-        or provider["identity"] != "picker.vcs.ucapi"
-        or provider["identity_version"] != 2
-        or provider["contract_version"] != PICKER_VCS_CONTRACT_VERSION
-    ):
-        raise RuntimeError(
-            "Picker VCS coverage contract mismatch: rebuild Picker/xcomm with "
-            "schema_version=4/provider_contract_version=2"
-        )
-    return result
+        command.extend(["--test", test])
+    completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=120, check=False)
+    if completed.returncode:
+        raise RuntimeError(f"picker coverage query failed: {completed.stderr[-2000:]}")
+    try:
+        report = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("picker coverage helper returned invalid JSON") from error
+    if not isinstance(report, dict) or report.get("schema_version") != PICKER_VCS_SCHEMA_VERSION:
+        raise RuntimeError("Picker VCS coverage schema mismatch: expected schema_version=1")
+    if report.get("success") is not True or report.get("simulator") != "vcs":
+        raise RuntimeError(f"picker coverage query failed: {report.get('errors', [])}")
+    return _normalize_picker_report(report)
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -766,14 +699,67 @@ def _externalize_atom_catalog(report: dict[str, Any], output_dir: Path) -> None:
     if not isinstance(inventory, dict):
         raise ValueError("VCS cumulative report is missing atom_inventory")
     catalog_dir = output_dir / "catalog"
-    atoms = _write_jsonl(catalog_dir / "atoms.jsonl", list(inventory.pop("atoms", [])))
-    groups = _write_jsonl(catalog_dir / "groups.jsonl", list(inventory.pop("groups", [])))
+    raw_atoms = list(inventory.pop("atoms", []))
+    raw_groups = list(inventory.pop("groups", []))
+    source_rows: dict[str, dict[str, Any]] = {}
+    compact_atoms: list[dict[str, Any]] = []
+    group_identities = {
+        str(group["group_key"]): dict(group.get("identity") or {}) for group in raw_groups
+    }
+    common_identity = {
+        "design_revision": inventory.get("design_revision"),
+    }
+    for atom in raw_atoms:
+        location = dict(atom.get("source_location") or {})
+        logical_file = str(location.get("logical_file") or location.get("file") or "")
+        resolved_file = str(location.get("resolved_file") or logical_file)
+        source_id = "source:" + _canonical_hash({"file": logical_file})
+        source_rows[source_id] = {
+            "source_id": source_id,
+            "logical_file": logical_file,
+            "resolved_file": resolved_file,
+        }
+        group_key = str(atom.get("group_key") or "")
+        group_identity = group_identities[group_key]
+        identity = dict(atom.get("identity") or {})
+        variant = {
+            key: value for key, value in identity.items()
+            if key not in common_identity and group_identity.get(key) != value
+        }
+        compact_atoms.append({
+            "atom_id": atom["atom_id"],
+            "group_key": group_key,
+            "variant": variant,
+            "source": {
+                "source_id": source_id,
+                "line": int(location.get("line") or 0),
+                "column": int(location.get("column") or 0),
+            },
+            "observation": atom.get("observation"),
+        })
+    compact_groups = []
+    for group in raw_groups:
+        identity = {
+            key: value for key, value in dict(group.get("identity") or {}).items()
+            if key not in common_identity
+        }
+        compact_groups.append({
+            "group_key": group["group_key"],
+            "identity": identity,
+            "atom_count": int(group.get("atom_count") or 0),
+            "member_hash": group.get("member_hash"),
+        })
+    sources = _write_jsonl(catalog_dir / "sources.jsonl", [source_rows[key] for key in sorted(source_rows)])
+    atoms = _write_jsonl(catalog_dir / "atoms.jsonl", compact_atoms)
+    groups = _write_jsonl(catalog_dir / "groups.jsonl", compact_groups)
+    sources["path"] = "catalog/sources.jsonl"
     atoms["path"] = "catalog/atoms.jsonl"
     groups["path"] = "catalog/groups.jsonl"
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         **inventory,
-        "files": {"atoms": atoms, "groups": groups},
+        "common_identity": common_identity,
+        "files": {"sources": sources, "atoms": atoms, "groups": groups},
     }
     encoded = (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     manifest_path = output_dir / "catalog.json"
@@ -783,12 +769,18 @@ def _externalize_atom_catalog(report: dict[str, Any], output_dir: Path) -> None:
     report["catalog"] = {
         "path": "catalog.json",
         "sha256": hashlib.sha256(encoded).hexdigest(),
-        "schema_version": 1,
+        "schema_version": 2,
         "design_revision": manifest.get("design_revision"),
         "inventory_revision": manifest.get("inventory_revision"),
         "atom_count": atoms["rows"],
         "group_count": groups["rows"],
     }
+
+
+def _compact_cumulative(report: dict[str, Any]) -> None:
+    """Drop development-era duplicate views after the v5 fields are populated."""
+    report.pop("overview", None)
+    report.pop("uncovered", None)
 
 
 def convert_vcs_case_coverage(
@@ -800,13 +792,9 @@ def convert_vcs_case_coverage(
     if not record.test:
         raise ValueError("VCS testcase coverage requires a testdata name")
     helper_path = _resolve_helper([record], helper)
-    raw_report = _query_picker_helper(
-        helper_path, record.database, [record.test], detail_mode="covered"
-    )
-    if "covered_items" not in raw_report:
-        raise RuntimeError(
-            "picker coverage helper does not provide covered_items; regenerate the DUT package"
-        )
+    # Picker exposes the testcase's current uncovered set.  Covered accepted
+    # gaps are derived only when a baseline target set is available.
+    raw_report = _query_picker_helper(helper_path, record.database, [record.test])
     patterns, line_ranges = _apply_ignores(raw_report, record.ignore)
     report = _build_code_coverage_report(
         raw_report,
@@ -817,7 +805,6 @@ def convert_vcs_case_coverage(
             f"{path}:{','.join(str(line) for line in sorted(lines))}"
             for path, lines in sorted(line_ranges.items())
         ],
-        detail_kind="covered",
     )
     report["metadata"].pop("html", None)
     report["scope"] = {
@@ -832,9 +819,10 @@ def convert_vcs_case_coverage(
     _write_json_document(summary_path, report)
 
     metrics = {}
-    for name, total in report["overview"]["total"].items():
-        covered = report["overview"]["covered"][name]
-        uncovered = total - covered
+    for name, value in report["metrics"].items():
+        total = int(value.get("total") or 0)
+        covered = int(value.get("covered") or 0)
+        uncovered = int(value.get("uncovered", total - covered))
         metrics[name] = MetricSummary(
             covered=covered,
             total=total,
@@ -856,17 +844,9 @@ def convert_vcs_preview_coverage(
     records: list[CoverageRecord],
     output_dir: Path,
     *,
-    source_root: str | Path | None = None,
     helper: str | None = None,
-    target_atom_ids: set[str] | None = None,
 ) -> CodeCoverageResult:
-    """Write an uncovered-only VCS preview without running URG.
-
-    Stage C needs atom closure feedback, not an HTML coverage report.  This
-    keeps the preview read-only and avoids the most expensive non-simulation
-    work while retaining the same atom identity/catalog contract as a
-    cumulative report.
-    """
+    """Write the candidate query's current uncovered atom catalog."""
     databases = list(dict.fromkeys(str(Path(record.database).resolve()) for record in records))
     if len(databases) != 1:
         raise ValueError("VCS preview coverage requires exactly one shared VDB")
@@ -877,7 +857,7 @@ def convert_vcs_preview_coverage(
     if not tests:
         raise ValueError("VCS preview coverage requires at least one testdata name")
     helper_path = _resolve_helper(records, helper)
-    raw_report = _query_picker_helper(helper_path, databases[0], tests, detail_mode="uncovered")
+    raw_report = _query_picker_helper(helper_path, databases[0], tests)
     ignore = list(dict.fromkeys(item for record in records for item in record.ignore))
     patterns, line_ranges = _apply_ignores(raw_report, ignore)
     final_report = _build_code_coverage_report(
@@ -891,43 +871,19 @@ def convert_vcs_preview_coverage(
         ],
     )
     final_report.setdefault("metadata", {})["preview"] = True
-    if target_atom_ids is not None:
-        inventory = final_report["atom_inventory"]
-        atoms = [item for item in inventory.get("atoms", []) if item.get("atom_id") in target_atom_ids]
-        remaining_ids = {item["atom_id"] for item in atoms}
-        groups = []
-        for source in inventory.get("groups", []):
-            members = sorted(set(source.get("members", [])) & remaining_ids)
-            if not members:
-                continue
-            item = dict(source)
-            item["members"] = members
-            item["atom_count"] = len(members)
-            item["member_hash"] = _canonical_hash(members)
-            groups.append(item)
-        inventory["atoms"] = atoms
-        inventory["groups"] = groups
-        inventory["target_scope"] = {
-            "planned_atom_count": len(target_atom_ids),
-            "still_open_atom_count": len(atoms),
-            "covered_atom_count": len(target_atom_ids - remaining_ids),
-        }
-        inventory["reconciliation"] = {
-            "provider_item_count": len(atoms), "enumerated_atom_count": len(atoms),
-            "atom_identity_hash": _canonical_hash(sorted(remaining_ids)),
-            "duplicate_identities": [], "unresolved": [],
-        }
-        # Stage C consumes exact atom observations, not the full LLM-facing
-        # uncovered hierarchy.  Keeping it would scale with the whole DUT.
-        final_report["uncovered"]["data"] = {}
+    # UCAgent owns accepted targets and computes U-C.  Toffee publishes C
+    # without applying workflow-specific target filtering.
+    final_report["uncovered"]["data"] = {}
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "cumulative.json"
     _externalize_atom_catalog(final_report, output_dir)
+    _compact_cumulative(final_report)
     _write_json_document(summary_path, final_report)
     metrics = {}
-    for name, total in final_report["overview"]["total"].items():
-        uncovered = final_report["overview"]["miss"][name]
-        covered = total - uncovered
+    for name, value in final_report["metrics"].items():
+        total = int(value.get("total") or 0)
+        covered = int(value.get("covered") or 0)
+        uncovered = int(value.get("uncovered") or (total - covered))
         metrics[name] = MetricSummary(
             covered=covered, total=total, uncovered=uncovered,
             rate=100.0 * covered / total if total else 0.0,
@@ -964,12 +920,11 @@ def convert_vcs_coverage(
     output_dir.mkdir(parents=True, exist_ok=True)
     tests = sorted({record.test for record in records if record.test})
     helper_path = _resolve_helper(records, helper)
-    raw_report = _query_picker_helper(
-        helper_path, databases[0], tests, detail_mode="uncovered"
-    )
+    raw_report = _query_picker_helper(helper_path, databases[0], tests)
     ignore = list(dict.fromkeys(item for record in records for item in record.ignore))
     patterns, line_ranges = _apply_ignores(raw_report, ignore)
-    urg_output = output_dir / "vcs_urg"
+    normalized_layout = output_dir.name == "coverage_data"
+    urg_output = output_dir / "native" / "vcs_urg" if normalized_layout else output_dir / "vcs_urg"
     urg_output.mkdir(parents=True, exist_ok=True)
     executable = _resolve_urg(urg, vcs_home)
     command = [executable, "-full64"]
@@ -1001,7 +956,6 @@ def convert_vcs_coverage(
     if completed.stderr.strip():
         warnings.append(f"URG emitted diagnostics; see {output_dir.name}/{stderr_log.name}")
     detail = f"{output_dir.name}/{entry.relative_to(output_dir).as_posix()}"
-    normalized_layout = output_dir.name == "coverage_data"
     summary_path = output_dir / ("cumulative.json" if normalized_layout else "code_coverage.json")
     summary_file = f"{output_dir.name}/{summary_path.name}"
     final_report = _build_code_coverage_report(
@@ -1016,11 +970,13 @@ def convert_vcs_coverage(
     )
     if normalized_layout:
         _externalize_atom_catalog(final_report, output_dir)
+        _compact_cumulative(final_report)
     _write_json_document(summary_path, final_report)
     metrics = {}
-    for name, total in final_report["overview"]["total"].items():
-        uncovered = final_report["overview"]["miss"][name]
-        covered = total - uncovered
+    for name, value in final_report["metrics"].items():
+        total = int(value.get("total") or 0)
+        covered = int(value.get("covered") or 0)
+        uncovered = int(value.get("uncovered") or (total - covered))
         metrics[name] = MetricSummary(
             covered=covered,
             total=total,

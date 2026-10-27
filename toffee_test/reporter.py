@@ -43,7 +43,7 @@ def _code_coverage_dir_name(records):
         except (TypeError, ValueError):
             continue
         simulators.add(record.simulator)
-    return "coverage_data" if simulators == {"vcs"} else "line_dat"
+    return "coverage_data" if simulators and simulators <= {"vcs", "verilator"} else "line_dat"
 
 
 def set_output_report(report_path):
@@ -445,7 +445,7 @@ def __update_testcase_coverage__(tests):
             executor.shutdown(wait=True)
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2 if coverage_dir_name == "coverage_data" else 1,
         "simulator": next(iter(simulators)) if len(simulators) == 1 else None,
         "databases": sorted(databases),
         "summary": {
@@ -465,6 +465,43 @@ def __update_testcase_coverage__(tests):
             for bin_id, value in sorted(functional_index.items())
         },
     }
+    if coverage_dir_name == "coverage_data":
+        provider_ids = {}
+        providers = []
+        rows = []
+        for nodeid, source_case in sorted(testcase_data.items()):
+            case = dict(source_case)
+            provider = case.pop("provider", None)
+            if provider:
+                key = tuple(sorted(provider.items()))
+                provider_ref = provider_ids.get(key)
+                if provider_ref is None:
+                    provider_ref = f"provider:{len(providers)}"
+                    provider_ids[key] = provider_ref
+                    providers.append({"id": provider_ref, **provider})
+                case["provider_ref"] = provider_ref
+            case["nodeid"] = nodeid
+            case = {
+                key: value for key, value in case.items()
+                if value not in (None, "", {}, [])
+            }
+            rows.append(case)
+        cases_path = os.path.join(line_dat_dir, "testcases", "cases.jsonl")
+        os.makedirs(os.path.dirname(cases_path), exist_ok=True)
+        digest = hashlib.sha256()
+        with open(cases_path, "wb") as stream:
+            for row in rows:
+                encoded = (json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+                stream.write(encoded)
+                digest.update(encoded)
+        report.pop("testcases", None)
+        report["providers"] = providers
+        report["cases"] = {
+            "path": "testcases/cases.jsonl",
+            "rows": len(rows),
+            "sha256": digest.hexdigest(),
+            "bytes": os.path.getsize(cases_path),
+        }
     index_name = "testcases.json" if coverage_dir_name == "coverage_data" else "testcase_coverage.json"
     output = os.path.join(line_dat_dir, index_name)
     with open(output, "w", encoding="utf-8") as stream:
@@ -603,16 +640,49 @@ def set_code_coverage(request, record: CoverageRecord | dict):
             })
 
 
-def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None):
-    """Compatibility wrapper for legacy Verilator-only callers."""
+def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *, dut=None):
+    """Record coverage using the DUT simulator and its actual native database.
+
+    Without a DUT this retains the legacy Verilator contract. VCS requires a
+    generated DUT exposing GetCoveragePath and a sibling coverage/coverage helper.
+    The SetCoverage argument selects testdata, not the VDB directory itself.
+    """
     assert isinstance(datfile, str), "datfile should be a string"
     if ignore is None:
         ignore = []
     elif isinstance(ignore, str):
         ignore = [ignore]
+    simulator = "verilator"
+    database = datfile
+    helper = None
+    test = None
+    if dut is not None:
+        simulator = getattr(dut, "SIMULATOR", None)
+        if simulator is None:
+            simulator = dut.GetSimulator() if hasattr(dut, "GetSimulator") else "verilator"
+        simulator = str(simulator).strip().lower()
+        if simulator == "vcs":
+            import sys
+            from pathlib import Path
+            from .utils.code_coverage.models import normalize_vcs_testdata_name
+
+            get_path = getattr(dut, "GetCoveragePath", None)
+            if not callable(get_path):
+                raise RuntimeError("VCS coverage requires a regenerated DUT with GetCoveragePath and coverage/coverage")
+            database = get_path()
+            module = sys.modules.get(type(dut).__module__)
+            module_file = getattr(module, "__file__", None)
+            candidate = Path(module_file).resolve().parent / "coverage" / "coverage" if module_file else None
+            if not database or candidate is None or not candidate.is_file():
+                raise RuntimeError("VCS coverage database or coverage/coverage helper is unavailable; regenerate the DUT with coverage enabled")
+            helper = str(candidate)
+            test = normalize_vcs_testdata_name(datfile)
+        elif simulator != "verilator":
+            raise ValueError(f"Unsupported coverage simulator: {simulator}")
     set_code_coverage(
         request,
-        CoverageRecord(simulator="verilator", database=datfile, ignore=ignore),
+        CoverageRecord(simulator=simulator, database=str(database), test=test, helper=helper,
+                       nodeid=getattr(request.node, "nodeid", None), ignore=ignore),
     )
 
 

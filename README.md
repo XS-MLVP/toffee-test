@@ -11,6 +11,17 @@ toffee-test is a pytest plugin that provides testing support for the toffee fram
 
 ## Installation
 
+For existing fixtures, `set_line_coverage(request, selected_path, dut=dut)` records
+VCS testdata separately from the actual VDB returned by `GetCoveragePath()` and
+discovers the generated `coverage/coverage` executable beside the DUT module.
+Old VCS exports without these capabilities fail explicitly and must be regenerated;
+changing a filename to `.vdb` is insufficient. Calls without `dut` retain the
+legacy Verilator contract. Always finalize the DUT even if reporting raises.
+
+VCS queries run the generated helper directly using its schema-version-1 JSON
+protocol and a 120-second timeout; no xcomm `CoverageClient` binding is required.
+Native query failures and incompatible schemas fail explicitly.
+
 - Properly install [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and its dependencies.
 
 - Install toffee-test
@@ -71,6 +82,20 @@ Use the `@toffee_test.testcase` decorator to mark test functions, making them re
 ### Generating Test Reports
 
 By adding the `--toffee-report` parameter to the pytest command line, you can generate a toffee test report.
+
+Add `--case-coverage` to generate normalized code coverage for every testcase.
+The option requires `--toffee-report`. VCS writes `coverage_data/testcases.json`,
+per-case `coverage_data/cases/<case-id>/observation.json`, compact
+`coverage_data/cumulative.json`, and the complete atom/group inventory in
+`coverage_data/catalog.json`. VCS supports line, branch, toggle, condition, and
+FSM; FSM states provide context while transitions count toward the FSM rate.
+Verilator keeps its existing `line_dat/testcase_coverage.json`, per-case
+`code_coverage.json`, and line-range detail behavior. The option does not print
+per-test coverage summaries.
+
+```bash
+pytest --toffee-report --case-coverage
+```
 
 Additionally, the `--report-name` parameter can specify the report name, and `--report-dir` can specify the report directory.
 

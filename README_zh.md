@@ -72,8 +72,27 @@ toffee_request 中提供的接口如下：
 
 通过在 pytest 命令行中添加 `--toffee-report` 参数，可以生成 toffee 测试报告。
 
+增加 `--case-coverage` 后，会为每个测试用例生成标准化代码覆盖率。该参数必须与
+`--toffee-report` 一起使用。VCS 写入 `coverage_data/testcases.json`、逐用例
+`coverage_data/cases/<case-id>/observation.json`、紧凑累计报告 `coverage_data/cumulative.json`
+和完整原子目录 `coverage_data/catalog.json`。VCS 支持 line、branch、toggle、condition、FSM；FSM state
+只提供上下文，transition 计入 FSM 覆盖率。Verilator 保留原有 `line_dat/testcase_coverage.json`、逐用例
+`code_coverage.json` 与 line-range 行为。本参数不会逐用例打印覆盖率摘要。
+
+```bash
+pytest --toffee-report --case-coverage
+```
+
 此外，`--report-name` 参数可以指定报告名称，`--report-dir` 参数可以指定报告存放目录。
 
 ## 更多资源
+
+现有 fixture 可使用 `set_line_coverage(request, selected_path, dut=dut)` 上报 VCS：
+`selected_path` 对应 testdata 名称，真实 VDB 由 `GetCoveragePath()` 获取，查询程序定位到
+DUT 模块旁的 `coverage/coverage`。缺少接口或查询程序的旧包必须重新生成，不能仅修改后缀。
+不传 `dut` 时保留原 Verilator 契约；无论上报是否成功，都应在 `finally` 中调用 `Finish()`。
+
+VCS 查询直接调用生成包的 helper，使用 schema-version-1 JSON 协议及 120 秒超时，
+不再依赖 xcomm 的 `CoverageClient` 绑定。原生查询失败或 schema 不匹配会明确报错。
 
 更多资源可在 [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) 和 [万众一芯开放验证](https://open-verify.cc/) 中获取。

@@ -114,8 +114,6 @@ class ToffeeRequest:
         # Options for running without waveform/coverage generation from the DUT.
         wave_format: str = self.dut.GetWaveFormat()
         use_code_cov: bool = self.dut.GetCovMetrics() != 0
-        if use_code_cov and hasattr(self.dut, "GetCoverageHelperPath"):
-            self.coverage_helper = self.dut.GetCoverageHelperPath() or None
         if use_code_cov and not self.coverage_helper:
             module = sys.modules.get(self.dut.__class__.__module__)
             module_file = getattr(module, "__file__", None)
