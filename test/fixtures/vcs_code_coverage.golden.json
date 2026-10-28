@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "description": "Code coverage summary. `uncovered.data` contains uncovered items.",
+  "simulator": "vcs",
+  "metadata": {
+    "database": "<DATABASE>",
+    "tests": ["case_a", "case_b"],
+    "exclude": [],
+    "html": "line_dat/vcs_urg/dashboard.html",
+    "detail_level": {
+      "line": "range",
+      "toggle": "base_signal_transitions",
+      "branch": "object_arms"
+    }
+  },
+  "overview": {
+    "total": {"line": 5, "toggle": 3, "branch": 2},
+    "miss": {"line": 3, "toggle": 2, "branch": 1}
+  },
+  "uncovered": {
+    "schema": {
+      "file_path": {
+        "total": ["line", "toggle", "branch"],
+        "miss": ["line", "toggle", "branch"],
+        "modules": {
+          "module_name": {
+            "total": ["line", "toggle", "branch"],
+            "miss": ["line", "toggle", "branch"],
+            "line": ["inclusive start-end ranges"],
+            "toggle": ["base signal objects with missing transitions and bit ranges"],
+            "branch": ["branch objects with missing arms"]
+          }
+        }
+      }
+    },
+    "data": {
+      "/rtl/top.v": {
+        "total": {"line": 5, "toggle": 3, "branch": 2},
+        "miss": {"line": 3, "toggle": 2, "branch": 1},
+        "modules": {
+          "Top": {
+            "total": {"line": 5, "toggle": 3, "branch": 2},
+            "miss": {"line": 3, "toggle": 2, "branch": 1},
+            "line": ["11-12", "15-15"],
+            "toggle": [
+              {
+                "line": 20,
+                "column": 0,
+                "object": "data",
+                "transitions": ["0 -> 1", "1 -> 0"],
+                "atom_count": 2,
+                "aggregation": "base_signal",
+                "bits": {"0 -> 1": ["1-1"], "1 -> 0": ["0-0"]}
+              }
+            ],
+            "branch": [
+              {"line": 30, "column": 0, "object": "valid", "arms": ["false"], "atom_count": 1}
+            ]
+          }
+        }
+      }
+    }
+  },
+  "detail_summary": {
+    "line": {"metric_items": 3, "enumerated_atoms": 3, "gap_count": 3, "unresolved": 0},
+    "toggle": {"metric_items": 2, "enumerated_atoms": 2, "gap_count": 2, "unresolved": 0},
+    "branch": {"metric_items": 1, "enumerated_atoms": 1, "gap_count": 1, "unresolved": 0}
+  }
+}

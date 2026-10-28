@@ -104,8 +104,17 @@ def pytest_runtest_call(item):
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    """Attach portable exception and coverage data before worker transport."""
     outcome = yield
     report = outcome.get_result()
+    # CallInfo is not transported by forked/xdist workers. Keep only plain
+    # exception data on TestReport, whose extra attributes survive transport.
+    if report.failed and call.excinfo is not None:
+        report.__toffee_exception__ = {
+            "phase": report.when,
+            "type": call.excinfo.type.__name__,
+            "message": str(call.excinfo.value)[:2000],
+        }
     return process_func_coverage(item, call, report)
 
 
@@ -152,9 +161,18 @@ def pytest_addoption(parser: pytest.Parser):
         help="Run test without functional coverage.",
     )
 
+    group.addoption(
+        "--case-coverage",
+        action="store_true",
+        default=False,
+        help="Generate normalized code coverage data for every testcase.",
+    )
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
+    if config.getoption("--case-coverage") and not config.getoption("--toffee-report"):
+        raise pytest.UsageError("--case-coverage requires --toffee-report")
     if hasattr(config, "workerinput"):
         config._toffee_test_start_time = config.workerinput["toffee_test_start_time"]
     else:
