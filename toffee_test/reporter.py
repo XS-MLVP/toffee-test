@@ -1,20 +1,29 @@
 import json
+import hashlib
 import os
 import uuid
 from collections import Counter
 from datetime import datetime
 from typing import Union
+import pytest
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from filelock import FileLock
 from toffee.funcov import CovGroup, get_func_full_name
 
-from .utils import convert_line_coverage, get_toffee_custom_key_value
+from .utils import get_toffee_custom_key_value
+from .utils.code_coverage import (
+    CoverageRecord,
+    convert_case_coverage,
+    convert_code_coverage,
+)
 
 
 LOCK_FILE_FUNC_COV = "/tmp/toffee_func_cov.lock"
 LOCK_FILE_LINE_COV = "/tmp/toffee_line_cov.lock"
+_AUTO_COVERAGE_DUT = object()
 
 def get_default_report_name():
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -26,6 +35,17 @@ def get_template_dir():
 
 
 __output_report_dir__ = ""
+
+
+def _code_coverage_dir_name(records):
+    simulators = set()
+    for value in records or []:
+        try:
+            record = value if isinstance(value, CoverageRecord) else CoverageRecord.from_dict(value)
+        except (TypeError, ValueError):
+            continue
+        simulators.add(record.simulator)
+    return "coverage_data" if simulators and simulators <= {"vcs", "verilator"} else "line_dat"
 
 
 def set_output_report(report_path):
@@ -41,10 +61,23 @@ def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99)
     if not line_coverage_list:
         return None
     coverage_error = ""
-    line_dat_dir = os.path.join(__output_report_dir__, "line_dat")
+    coverage_dir_name = _code_coverage_dir_name(line_coverage_list)
+    line_dat_dir = os.path.join(__output_report_dir__, coverage_dir_name)
+    vcs_mode = os.environ.get("TOFFEE_VCS_AGGREGATE_MODE", "cumulative").strip().lower()
+    if coverage_dir_name == "coverage_data" and vcs_mode == "deferred":
+        # Coverage-refine stage C queries only its fixed batch targets after
+        # pytest.  Do not run the full VCS/URG aggregate from the reporter.
+        return {
+            "hints": 0, "total": 0, "grate": 0, "ignore": [], "detail": "",
+            "summary_file": "", "metrics": {}, "databases": [], "warnings": [],
+            "error": "", "collection_mode": "deferred",
+        }
+    if vcs_mode not in {"cumulative", "deferred"}:
+        raise ValueError("TOFFEE_VCS_AGGREGATE_MODE must be 'cumulative' or 'deferred'")
     try:
-        (hint, total), ignore = convert_line_coverage(
-            line_coverage_list, line_dat_dir
+        result = convert_code_coverage(line_coverage_list, line_dat_dir)
+        return result.to_report_dict(
+            __report_info__.get("line_grate", line_grate)
         )
     except Exception as e:
         from toffee.logger import error
@@ -57,6 +90,11 @@ def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99)
         "total": total,
         "grate": __report_info__.get("line_grate", line_grate),
         "ignore": ignore,
+        "detail": "",
+        "summary_file": "",
+        "metrics": {},
+        "databases": [],
+        "warnings": [],
         "error": coverage_error,
     }
 
@@ -197,6 +235,283 @@ def __update_func_coverage__(__func_coverage__):
     return coverage
 
 
+def _testcase_function_id(item):
+    try:
+        return get_func_full_name(item.function)
+    except (OSError, TypeError, ValueError):
+        # pytest-forked may reconstruct the function without retrievable source.
+        return None
+
+
+def _testcase_nodeid(item):
+    nodeid = getattr(item, "nodeid", None)
+    if nodeid:
+        return str(nodeid)
+    function_id = _testcase_function_id(item)
+    if function_id:
+        return function_id
+    return f"{getattr(item, 'path', '')}::{getattr(item, 'name', '')}"
+
+
+def _testcase_functional_coverage(test):
+    item = test["item"]
+    function_id = _testcase_function_id(item)
+    function_name = str(
+        getattr(item, "originalname", None)
+        or getattr(item, "name", "").split("[", 1)[0]
+    )
+    function_path = os.path.abspath(str(getattr(item, "path", "")))
+
+    def belongs_to_test(candidate):
+        if function_id is not None and candidate == function_id:
+            return True
+        return bool(
+            function_name
+            and function_path
+            and candidate.startswith(f"{function_path}:")
+            and candidate.endswith(f"::{function_name}")
+        )
+
+    declared = set()
+    observed = Counter()
+    seen = set()
+    for phase in test["phases"]:
+        report = phase["report"]
+        for entry in getattr(report, "__coverage_group__", []):
+            key = (entry["hash"], entry["id"])
+            if key in seen:
+                continue
+            seen.add(key)
+            group = json.loads(entry["data"])
+            for point in group.get("points", []):
+                prefix = f"{group['name']}/{point['name']}"
+                for bin_data in point.get("bins", []):
+                    bin_id = f"{prefix}/{bin_data['name']}"
+                    hints = int(bin_data.get("hints", 0))
+                    if hints > 0:
+                        observed[bin_id] += hints
+                for bin_name, functions in point.get("functions", {}).items():
+                    if any(belongs_to_test(candidate) for candidate in functions):
+                        declared.add(f"{prefix}/{bin_name}")
+    return {
+        "declared": sorted(declared),
+        "hit": [
+            {"id": bin_id, "count": count}
+            for bin_id, count in sorted(observed.items())
+        ],
+    }
+
+
+def _testcase_record(test):
+    for phase in reversed(test["phases"]):
+        raw = getattr(phase["report"], "__line_coverage__", None)
+        if raw:
+            return CoverageRecord.from_dict(raw)
+    return None
+
+
+def _testcase_duration(test):
+    duration = 0.0
+    for phase in test["phases"]:
+        value = getattr(phase["report"], "duration", 0.0)
+        try:
+            duration += float(value)
+        except (TypeError, ValueError):
+            pass
+    return duration
+
+
+def __update_testcase_coverage__(tests):
+    records_by_nodeid = {}
+    for test in tests:
+        record = _testcase_record(test)
+        if record is not None:
+            records_by_nodeid[_testcase_nodeid(test["item"])] = record
+    coverage_dir_name = _code_coverage_dir_name(list(records_by_nodeid.values()))
+    line_dat_dir = os.path.join(__output_report_dir__, coverage_dir_name)
+    cases_dir = os.path.join(line_dat_dir, "cases")
+    os.makedirs(cases_dir, exist_ok=True)
+    testcase_data = {}
+    functional_index = {}
+    databases = set()
+    simulators = set()
+    status_counts = Counter()
+    coverage_errors = 0
+    coverage_jobs = []
+    coverage_mode = os.environ.get("TOFFEE_CASE_COVERAGE_MODE", "full").strip().lower()
+    if coverage_mode not in {"full", "metadata"}:
+        raise ValueError("TOFFEE_CASE_COVERAGE_MODE must be 'full' or 'metadata'")
+
+    for test in tests:
+        item = test["item"]
+        nodeid = _testcase_nodeid(item)
+        function_name = getattr(item, "name", None)
+        if function_name is None:
+            function_name = getattr(getattr(item, "function", None), "__name__", "")
+        case_id = hashlib.sha256(nodeid.encode("utf-8")).hexdigest()[:12]
+        status = str(test.get("status", {}).get("word") or "UNKNOWN").lower()
+        status_counts[status] += 1
+        functional = _testcase_functional_coverage(test)
+        record = records_by_nodeid.get(nodeid)
+        case = {
+            "id": case_id,
+            "status": status,
+            "duration": _testcase_duration(test),
+            "source": {
+                "file": str(getattr(item, "path", "")),
+                "function": str(function_name),
+            },
+            "included_in_merged": status == "passed",
+            "functional": functional,
+            "coverage": None,
+            "code": {},
+            "error": "",
+        }
+
+        for bin_id in functional["declared"]:
+            functional_index.setdefault(
+                bin_id, {"declared_by": [], "hit_by": []}
+            )["declared_by"].append(nodeid)
+        for hit in functional["hit"]:
+            functional_index.setdefault(
+                hit["id"], {"declared_by": [], "hit_by": []}
+            )["hit_by"].append(nodeid)
+
+        if record is not None:
+            databases.add(record.database)
+            simulators.add(record.simulator)
+            case["provider"] = {
+                "simulator": record.simulator,
+                "database": record.database,
+                "testdata": record.test,
+                "worker": record.worker,
+            }
+            case_report_name = "observation.json" if coverage_dir_name == "coverage_data" else "code_coverage.json"
+            relative = f"{coverage_dir_name}/cases/{case_id}/{case_report_name}"
+            if coverage_mode == "metadata":
+                # Coverage refinement performs one authoritative cumulative
+                # VDB query later. Avoid reopening the same VDB for every
+                # testcase when per-case atom attribution is not requested.
+                case["coverage_mode"] = "metadata"
+            else:
+                coverage_jobs.append((nodeid, record, os.path.join(cases_dir, case_id), relative))
+        testcase_data[nodeid] = case
+
+    # VCS queries are independent read-only operations on the same VDB.  The
+    # Picker helper holds a shared lock, and every case has its own output
+    # directory, so bounded parallelism safely avoids reopening the VDB one
+    # testcase at a time.  Keep other providers serial until they explicitly
+    # document equivalent concurrency guarantees.
+    workers = 1
+    if coverage_jobs and all(record.simulator == "vcs" for _, record, _, _ in coverage_jobs):
+        try:
+            configured = int(os.environ.get("TOFFEE_CASE_COVERAGE_WORKERS", "0"))
+        except ValueError:
+            configured = 0
+        workers = configured if configured > 0 else min(8, os.cpu_count() or 1)
+        workers = min(max(1, workers), len(coverage_jobs))
+
+    def collect_case(job):
+        nodeid, record, output_dir, relative = job
+        try:
+            result = convert_case_coverage(record, output_dir)
+            return nodeid, relative, result, ""
+        except Exception as error:
+            return nodeid, relative, None, repr(error)
+
+    if workers == 1:
+        completed = map(collect_case, coverage_jobs)
+    else:
+        executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="toffee-vcs-coverage")
+        futures = [executor.submit(collect_case, job) for job in coverage_jobs]
+        completed = (future.result() for future in as_completed(futures))
+    try:
+        for nodeid, relative, result, error in completed:
+            case = testcase_data[nodeid]
+            if error:
+                case["error"] = error
+                coverage_errors += 1
+                continue
+            case["coverage"] = relative
+            case["code"] = {
+                name: {
+                    "covered": metric.covered,
+                    "total": metric.total,
+                    "miss": metric.uncovered,
+                    "rate": metric.rate,
+                }
+                for name, metric in result.metrics.items()
+            }
+    finally:
+        if workers > 1:
+            executor.shutdown(wait=True)
+
+    report = {
+        "schema_version": 2 if coverage_dir_name == "coverage_data" else 1,
+        "simulator": next(iter(simulators)) if len(simulators) == 1 else None,
+        "databases": sorted(databases),
+        "summary": {
+            "total": len(tests),
+            "passed": status_counts["passed"],
+            "failed": status_counts["failed"],
+            "skipped": status_counts["skipped"],
+            "error": status_counts["error"],
+            "coverage_errors": coverage_errors,
+        },
+        "testcases": testcase_data,
+        "functional_index": {
+            bin_id: {
+                "declared_by": sorted(set(value["declared_by"])),
+                "hit_by": sorted(set(value["hit_by"])),
+            }
+            for bin_id, value in sorted(functional_index.items())
+        },
+    }
+    if coverage_dir_name == "coverage_data":
+        provider_ids = {}
+        providers = []
+        rows = []
+        for nodeid, source_case in sorted(testcase_data.items()):
+            case = dict(source_case)
+            provider = case.pop("provider", None)
+            if provider:
+                key = tuple(sorted(provider.items()))
+                provider_ref = provider_ids.get(key)
+                if provider_ref is None:
+                    provider_ref = f"provider:{len(providers)}"
+                    provider_ids[key] = provider_ref
+                    providers.append({"id": provider_ref, **provider})
+                case["provider_ref"] = provider_ref
+            case["nodeid"] = nodeid
+            case = {
+                key: value for key, value in case.items()
+                if value not in (None, "", {}, [])
+            }
+            rows.append(case)
+        cases_path = os.path.join(line_dat_dir, "testcases", "cases.jsonl")
+        os.makedirs(os.path.dirname(cases_path), exist_ok=True)
+        digest = hashlib.sha256()
+        with open(cases_path, "wb") as stream:
+            for row in rows:
+                encoded = (json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+                stream.write(encoded)
+                digest.update(encoded)
+        report.pop("testcases", None)
+        report["providers"] = providers
+        report["cases"] = {
+            "path": "testcases/cases.jsonl",
+            "rows": len(rows),
+            "sha256": digest.hexdigest(),
+            "bytes": os.path.getsize(cases_path),
+        }
+    index_name = "testcases.json" if coverage_dir_name == "coverage_data" else "testcase_coverage.json"
+    output = os.path.join(line_dat_dir, index_name)
+    with open(output, "w", encoding="utf-8") as stream:
+        json.dump(report, stream, indent=2)
+        stream.write("\n")
+    return f"{coverage_dir_name}/{index_name}"
+
+
 __report_info__ = {
     "user": None,
     "title": None,
@@ -229,8 +544,10 @@ def process_context(context, config):
     has_testcase_func_coverage = False
 
     for t in context["tests"]:
-        test_passed = t.get("status", {}).get("word") == "PASSED"
         for p in t["phases"]:
+            failure = getattr(p["report"], "__toffee_exception__", None)
+            if failure is not None:
+                p["exception"] = dict(failure)
             if hasattr(p["report"], "__coverage_group__"):
                 has_testcase_func_coverage = True
                 for fc_data in p["report"].__coverage_group__:
@@ -240,8 +557,8 @@ def process_context(context, config):
                     coverage_func_keys.append(key)
                     coverage_func_list.append(fc_data["data"])
             if hasattr(p["report"], "__line_coverage__"):
-                if not test_passed:
-                    continue
+                # Coverage records describe executed hardware, independently of
+                # the test assertion outcome. Preserve failures in the report.
                 lc_data = p["report"].__line_coverage__
                 key = "%s-%s" % (lc_data["hash"], lc_data["id"])
                 if key in coverage_line_keys:
@@ -267,9 +584,16 @@ def process_context(context, config):
         "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99)),
         "functional": __update_func_coverage__(coverage_func_list),
     }
-    test_abstract_info = {
-        get_func_full_name(t["item"].function):t["status"]["word"] for t in context["tests"]
-    }
+    context["case_coverage"] = (
+        __update_testcase_coverage__(context["tests"])
+        if config.getoption("--case-coverage")
+        else None
+    )
+    test_abstract_info = {}
+    for test in context["tests"]:
+        item = test["item"]
+        key = _testcase_function_id(item) or _testcase_nodeid(item)
+        test_abstract_info[key] = test["status"]["word"]
     context["test_abstract_info"] = test_abstract_info
     if config.option.toffee_report_dump_json:
         def default(o):
@@ -301,24 +625,89 @@ def set_func_coverage(request, g):
             } for g in request.node.__coverage_group__])
 
 
-def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None):
-    assert isinstance(datfile, str), "datfile should be a string"
-    if ignore is None:
-        ignore = []
-    elif isinstance(ignore, str):
-        ignore = [ignore]
-    request.node.__line_coverage__ = json.dumps({"datfile":datfile, "ignore": ignore})
+def set_code_coverage(request, record: CoverageRecord | dict):
+    if not isinstance(record, CoverageRecord):
+        record = CoverageRecord.from_dict(record)
+    else:
+        record = record.normalized()
+    data = record.to_dict()
+    request.node.__line_coverage__ = json.dumps(data)
     if request.scope == 'module':
         with FileLock(LOCK_FILE_LINE_COV):
             session = request.session
             if not hasattr(session, "__line_coverage__"):
                 session.__line_coverage__ = []
             session.__line_coverage__.append({
-                "hash": "%s" % hash(datfile),
+                "hash": "%s" % hash((record.simulator, record.database, record.test)),
                 "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
-                "data": datfile,
-                "ignore": ignore,
+                **data,
             })
+
+
+def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *, dut=_AUTO_COVERAGE_DUT):
+    """Record coverage using the DUT simulator and its actual native database.
+
+    When omitted, resolve only the current fixture's cached result during teardown.
+    Explicit None retains raw Verilator records, including synthetic template tests.
+    VCS requires GetCoveragePath and a sibling coverage/coverage helper. This records
+    metadata only; the original fixture remains responsible for calling Finish.
+    """
+    assert isinstance(datfile, str), "datfile should be a string"
+    if dut is _AUTO_COVERAGE_DUT:
+        dut = None
+        fixture_name = getattr(request, "fixturename", None)
+        get_fixture = getattr(request, "getfixturevalue", None)
+        if fixture_name and callable(get_fixture):
+            try:
+                candidate = get_fixture(fixture_name)
+            except pytest.FixtureLookupError:
+                candidate = None
+            if candidate is not None and (
+                isinstance(getattr(candidate, "SIMULATOR", None), str)
+                or callable(getattr(candidate, "GetSimulator", None))
+            ):
+                metrics = getattr(candidate, "GetCovMetrics", None)
+                if callable(metrics) and metrics() in (None, 0):
+                    return
+                dut = candidate
+        if dut is None and datfile.lower().endswith(".vdb"):
+            raise RuntimeError("VCS coverage requires the current yielded DUT fixture or an explicit dut argument")
+    if ignore is None:
+        ignore = []
+    elif isinstance(ignore, str):
+        ignore = [ignore]
+    simulator = "verilator"
+    database = datfile
+    helper = None
+    test = None
+    if dut is not None:
+        simulator = getattr(dut, "SIMULATOR", None)
+        if simulator is None:
+            simulator = dut.GetSimulator() if hasattr(dut, "GetSimulator") else "verilator"
+        simulator = str(simulator).strip().lower()
+        if simulator == "vcs":
+            import sys
+            from pathlib import Path
+            from .utils.code_coverage.models import normalize_vcs_testdata_name
+
+            get_path = getattr(dut, "GetCoveragePath", None)
+            if not callable(get_path):
+                raise RuntimeError("VCS coverage requires a regenerated DUT with GetCoveragePath and coverage/coverage")
+            database = get_path()
+            module = sys.modules.get(type(dut).__module__)
+            module_file = getattr(module, "__file__", None)
+            candidate = Path(module_file).resolve().parent / "coverage" / "coverage" if module_file else None
+            if not database or candidate is None or not candidate.is_file():
+                raise RuntimeError("VCS coverage database or coverage/coverage helper is unavailable; regenerate the DUT with coverage enabled")
+            helper = str(candidate)
+            test = normalize_vcs_testdata_name(datfile)
+        elif simulator != "verilator":
+            raise ValueError(f"Unsupported coverage simulator: {simulator}")
+    set_code_coverage(
+        request,
+        CoverageRecord(simulator=simulator, database=str(database), test=test, helper=helper,
+                       nodeid=getattr(request.node, "nodeid", None), ignore=ignore),
+    )
 
 
 def process_func_coverage(item, call, report):
@@ -343,13 +732,11 @@ def process_func_coverage(item, call, report):
             item.__line_coverage__, str
         ), "item.__line_coverage__ should be a string"
         line_data = json.loads(item.__line_coverage__)
-        datfile = line_data["datfile"]
-        ignore = line_data["ignore"]
+        record = CoverageRecord.from_dict(line_data)
         report.__line_coverage__ = {
-            "hash": "%s" % hash(datfile),
+            "hash": "%s" % hash((record.simulator, record.database, record.test)),
             "id": "H%s-P%s" % (uuid.getnode(), os.getpid()),
-            "data": datfile,
-            "ignore": ignore,
+            **record.to_dict(),
         }
     return report
 
