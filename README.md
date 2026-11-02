@@ -4,76 +4,133 @@
 
 [English Version](README.md) | [中文版本](README_zh.md)
 
-toffee-test is a pytest plugin that provides testing support for the toffee framework. It includes several features to assist users in writing test cases for toffee:
-- Identifies test functions as toffee test case objects, making them recognizable and executable by the toffee framework
-- Offers resource management for test cases, such as DUT creation and destruction
-- Provides test report generation
+\`toffee-test\` is a pytest plugin for the Toffee framework. It provides test-case
+registration, DUT and coverage resource management, and HTML/JSON reports.
 
 ## Installation
 
-- Properly install [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and its dependencies.
+Install Toffee and its dependencies first:
 
-- Install toffee-test
-
-To install toffee-test via pip:
-
-```bash
+\`\`\`bash
 pip install toffee-test
-```
+\`\`\`
 
-Or install the development version:
+Install from source:
 
-```bash
-pip install toffee-test@git+https://github.com/XS-MLVP/toffee-test@master
-```
-
-Or install from source:
-
-```bash
+\`\`\`bash
 git clone https://github.com/XS-MLVP/toffee-test.git
 cd toffee-test
 pip install .
-```
+\`\`\`
 
 ## Usage
 
-### Managing Test Case Resources
+### Resources and test cases
 
-toffee-test provides the `toffee_request` fixture for managing test case resources. Use `toffee_request` to create your own fixture, which can then be used within test cases.
+Use \`toffee_request\` to create DUT resources and
+\`@toffee_test.testcase\` to register a test:
 
-For example, the following code creates a fixture to manage DUT creation and destruction.
-
-```python
+\`\`\`python
 import toffee_test
-
 
 @toffee_test.fixture
 def my_fixture(toffee_request: toffee_test.ToffeeRequest):
     return toffee_request.create_dut(MyDUT, "clock_pin_name")
+
+@toffee_test.testcase
+def test_adder(my_fixture):
+    ...
+\`\`\`
+
+\`create_dut\` accepts a DUT class, clock name, waveform filename, and coverage
+filename. \`add_cov_groups\` registers coverage groups and an optional sampling
+period.
+
+### Reports
+
+Add \`--toffee-report\` to generate a report. Use \`--report-name\` and
+\`--report-dir\` to control its name and location:
+
+\`\`\`bash
+pytest --toffee-report --report-dir reports
+\`\`\`
+
+The final report's **Line Coverage → View Details** link opens the HTML entry
+provided by the coverage adapter. VCS uses its native URG dashboard; Verilator
+uses its LCOV page. Keep the complete report directory and native HTML assets
+together when publishing the report. The summary retains the master branch layout and uses DUT line counts after
+configured exclusions.
+VCS native HTML also applies configured source-file exclusions. Native dashboard
+totals remain separate metadata and never replace the DUT metrics.
+
+Adapters return a validated relative detail URL through
+\`CodeCoverageResult(detail=...)\`. They may also return \`report_metrics\` and
+\`report_scope\`; the report template does not contain simulator-specific
+branches.
+
+### Per-test coverage
+
+Add \`--case-coverage\` together with \`--toffee-report\`:
+
+\`\`\`bash
+pytest --toffee-report --case-coverage
+\`\`\`
+
+VCS writes \`coverage_data/testcases.json\`, per-test observations under
+\`coverage_data/cases/\`, \`coverage_data/cumulative.json\`, and
+\`coverage_data/catalog.json\`. It supports line, branch, toggle, condition,
+and FSM coverage. Verilator keeps its existing per-test coverage files.
+
+Coverage summaries include every registered hardware coverage record, including
+tests that fail assertions. A run with no registered records displays \`N/A\`.
+
+For VCS, call \`set_line_coverage(request, selected_path, ignore=...)\`, then
+call \`dut.Finish()\`. During teardown, the reporter associates the fixture DUT,
+selected VCS testdata, \`GetCoveragePath()\`, and the generated
+\`coverage/coverage\` helper. Outside a DUT fixture, pass \`dut=dut\` explicitly;
+\`dut=None\` retains raw Verilator registration. Old DUT packages without the
+metadata/helper interface must be regenerated.
+
+VCS queries invoke the generated helper through its schema-version-1 JSON
+protocol with a 120-second timeout and do not require an xcomm
+\`CoverageClient\` binding. Query failures and incompatible schemas are reported
+explicitly.
+
+### Failure details
+
+With \`--report-dump-json\`, failed entries in \`tests[].phases[]\` contain an
+\`exception\` object with \`phase\`, \`type\`, and \`message\`. These fields
+survive \`pytest-forked\` and xdist transport; messages are limited to 2,000
+characters.
+
+## Adder examples
+
+Build the RTL, run six testcase groups, and generate coverage reports:
+
+```bash
+make test_Adder                 # Verilator: FST, DAT, LCOV
+make test_vcs_Adder             # VCS: automatic per-test fork, FSDB, VDB, URG
+make test_Adder SIM=vcs         # Same VCS flow
 ```
 
-Interfaces provided in `toffee_request` include:
+Both backends share the 128-bit Adder RTL and tests. Artifacts are kept under
+`outputs/Adder/verilator/` and `outputs/Adder/vcs/` respectively.
+See the [example guide](examples/Adder/README.md) for setup and parallel runs.
 
-- `create_dut`: Creates a DUT
-    - `dut_cls`: DUT class
-    - `clock_name`: Clock name
-    - `waveform_filename`: Waveform file name
-    - `coverage_filename`: Coverage file name
-- `add_cov_groups`: Adds coverage groups
-    - `cov_groups`: Coverage groups
-    - `periodic_sample`: Periodic sampling option
+## Development
 
+\`\`\`bash
+pytest -q test/test_coverage_fixture.py
+\`\`\`
 
-### Marking Test Cases
+For native VCS acceptance, set \`TOFFEE_NATIVE_DUT_DIR\` to a freshly compiled
+coverage-enabled Adder package and run:
 
-Use the `@toffee_test.testcase` decorator to mark test functions, making them recognizable and executable by the toffee framework.
+\`\`\`bash
+pytest -q test/test_coverage_native_fixture.py
+\`\`\`
 
-### Generating Test Reports
+## Documentation
 
-By adding the `--toffee-report` parameter to the pytest command line, you can generate a toffee test report.
-
-Additionally, the `--report-name` parameter can specify the report name, and `--report-dir` can specify the report directory.
-
-## Additional Resources
-
-More resources are available at [toffee](https://github.com/XS-MLVP/toffee/tree/master/toffee) and [UnityChip Website](https://open-verify.cc/).
+- [Coverage flow and module boundaries](docs/picker-coverage-flow.zh.md)
+- [Coverage atom catalog](docs/coverage_atom_inventory.md)
