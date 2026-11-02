@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from ..verilator_coverage import convert_verilator_coverage as convert_legacy_verilator
-from .common import html_report_detail
+from .common import html_report_detail, write_line_coverage_summary
 from .models import CodeCoverageResult, CoverageRecord, MetricSummary
 
 
@@ -125,6 +125,7 @@ def convert_verilator_coverage(
     summary["schema_version"] = 2
     _add_gap_metadata(summary)
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    write_line_coverage_summary(summary, output_dir)
     metrics = _metrics_from_summary(summary)
 
     return CodeCoverageResult(

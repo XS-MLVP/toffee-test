@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import pickle
+import signal
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -41,11 +44,22 @@ def _write_result(path: str, reports: list[TestReport], error: str | None = None
     os.replace(tmp, path)
 
 
-def _run_child(item: pytest.Item, result_path: str, nextitem: pytest.Item | None) -> None:
+def _run_child(
+    item: pytest.Item, result_path: str, nextitem: pytest.Item | None, parent_pid: int
+) -> None:
     os.environ[_CHILD_ENV] = "1"
     reports: list[TestReport] = []
     error = None
     try:
+        if sys.platform.startswith("linux"):
+            # UCAgent can terminate pytest when its outer timeout expires.
+            # Do not leave native DUTs alive holding stdout pipes or VDB locks.
+            libc = ctypes.CDLL(None, use_errno=True)
+            if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
+                code = ctypes.get_errno()
+                raise OSError(code, os.strerror(code))
+            if os.getppid() != parent_pid:
+                os._exit(1)
         reports.extend(runtestprotocol(item, log=False, nextitem=nextitem))
     except BaseException as exc:  # pragma: no cover - defensive process boundary
         error = f"forked child raised {type(exc).__name__}: {exc}"
@@ -79,9 +93,10 @@ def run_simulator_protocol(
     reports: list[TestReport] = []
     if log:
         item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
+    parent_pid = os.getpid()
     child = os.fork()
     if child == 0:
-        _run_child(item, result_path, nextitem)
+        _run_child(item, result_path, nextitem, parent_pid)
 
     deadline = time.monotonic() + timeout
     status = None
@@ -90,12 +105,19 @@ def run_simulator_protocol(
         if waited == child:
             break
         if time.monotonic() >= deadline:
-            os.kill(child, 15)
-            try:
-                os.waitpid(child, 0)
-            except ChildProcessError:
-                pass
+            os.kill(child, signal.SIGTERM)
+            grace = time.monotonic() + 0.5
+            while True:
+                waited, _ = os.waitpid(child, os.WNOHANG)
+                if waited == child:
+                    break
+                if time.monotonic() >= grace:
+                    os.kill(child, signal.SIGKILL)
+                    os.waitpid(child, 0)
+                    break
+                time.sleep(0.01)
             reports.append(_failure_report(item, "call", f"forked VCS test timed out after {timeout:g}s"))
+            status = None
             break
         time.sleep(0.01)
     else:  # pragma: no cover

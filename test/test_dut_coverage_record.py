@@ -35,6 +35,7 @@ def test_vcs_record_resolves_database_and_helper(tmp_path, monkeypatch):
     assert record["database"] == str(database)
     assert record["helper"] == str(helper)
     assert record["test"] == "test_add_0_"
+    assert record["datfile"] == "/tmp/test_add[0].vdb"
 
 
 def test_old_vcs_dut_fails_closed():
@@ -53,4 +54,15 @@ def test_verilator_record_keeps_existing_path():
         record = json.loads(request.node.__line_coverage__)
         assert record["simulator"] == "verilator"
         assert record["database"] == "test.dat"
+        assert record["datfile"] == "test.dat"
         assert record["ignore"] == ["Dut.ignore"]
+
+
+def test_raw_vcs_path_keeps_receipt_without_fabricating_verilator_data():
+    """Path registration without a live pytest fixture retains its public receipt."""
+    request = SimpleNamespace(node=SimpleNamespace(), scope="function")
+    set_line_coverage(request, "case.vdb", ignore="Dut.ignore")
+    record = json.loads(request.node.__line_coverage__)
+    assert record["datfile"] == record["database"] == "case.vdb"
+    assert record["simulator"] == "vcs"
+    assert record["helper"] is None

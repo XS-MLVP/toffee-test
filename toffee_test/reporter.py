@@ -528,6 +528,14 @@ def process_context(context, config):
     for k in ["Plugins", "Packages"]:
         context["metadata"].pop(k, None)
 
+    # Fixture setters run in testcase children under fork/xdist. Their ordinary
+    # report attributes carry the same public metadata back to the controller.
+    for test in context["tests"]:
+        for phase in test["phases"]:
+            info = getattr(phase["report"], "__toffee_report_info__", None)
+            if info:
+                __report_info__.update(info)
+
     global_report_info = get_toffee_custom_key_value().get("toffee_report_information", {})
     set_ctx("user", global_report_info.get("user", {"name":"Tofee", "email":"-"}))
     set_ctx("title", global_report_info.get("title", "Toffee Test Report"))
@@ -649,10 +657,13 @@ def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *,
 
     When omitted, resolve only the current fixture's cached result during teardown.
     Explicit None retains raw Verilator records, including synthetic template tests.
-    VCS requires GetCoveragePath and a sibling coverage/coverage helper. This records
-    metadata only; the original fixture remains responsible for calling Finish.
+    Without fixture metadata, raw paths retain the public datfile receipt; VCS
+    conversion still validates the native database and requires a coverage helper.
+    Resolved VCS DUTs require GetCoveragePath and a sibling coverage/coverage helper.
+    This records metadata only; the original fixture still calls Finish.
     """
     assert isinstance(datfile, str), "datfile should be a string"
+    simulator = "verilator"
     if dut is _AUTO_COVERAGE_DUT:
         dut = None
         fixture_name = getattr(request, "fixturename", None)
@@ -671,12 +682,16 @@ def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *,
                     return
                 dut = candidate
         if dut is None and datfile.lower().endswith(".vdb"):
-            raise RuntimeError("VCS coverage requires the current yielded DUT fixture or an explicit dut argument")
+            if fixture_name and callable(get_fixture):
+                raise RuntimeError("VCS coverage requires the current yielded DUT fixture or an explicit dut argument")
+            # Preserve raw path registration outside a pytest fixture. This is
+            # an unresolved VCS record, never Verilator data; conversion still
+            # requires a valid native database and coverage helper.
+            simulator = "vcs"
     if ignore is None:
         ignore = []
     elif isinstance(ignore, str):
         ignore = [ignore]
-    simulator = "verilator"
     database = datfile
     helper = None
     test = None
@@ -708,11 +723,19 @@ def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *,
         CoverageRecord(simulator=simulator, database=str(database), test=test, helper=helper,
                        nodeid=getattr(request.node, "nodeid", None), ignore=ignore),
     )
+    # Existing fixture/checker code reads the selected path from this field;
+    # for VCS it is a testdata selector, distinct from the native VDB location.
+    data = json.loads(request.node.__line_coverage__)
+    data["datfile"] = datfile
+    request.node.__line_coverage__ = json.dumps(data)
 
 
 def process_func_coverage(item, call, report):
     if call.when != "teardown":
         return
+    report.__toffee_report_info__ = {
+        **__report_info__, "meta": dict(__report_info__["meta"]),
+    }
     if hasattr(item, "__coverage_group__"):
         groups = []
         for g in item.__coverage_group__:

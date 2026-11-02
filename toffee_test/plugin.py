@@ -1,3 +1,4 @@
+import dis
 import inspect
 import os
 import shlex
@@ -84,28 +85,46 @@ def _resolve_ini_report_dir(config: pytest.Config, report_dir: str) -> str:
 
 
 def _fixture_declares_forked_dut(item: pytest.Item) -> bool:
-    """Find a fork-capable simulator DUT class referenced by a fixture.
+    """Inspect fixture factories without constructing a native DUT in the parent.
 
-    This preflight avoids forking ordinary tests.  The runtime check in
-    ``ToffeeRequest.create_dut`` remains authoritative for the actual DUT.
-    Fixtures that hide DUT creation behind a dynamic factory should add a
-    future explicit capability marker rather than relying on this heuristic.
+    Follow referenced Python functions, closures and module attributes so that
+    existing ``fixture -> create_dut -> DUT`` APIs need no isolation marker.
+    A visited set bounds recursive helper graphs; no inspected callable runs.
     """
     fixture_info = getattr(item, "_fixtureinfo", None)
     if fixture_info is None:
         return False
-    for fixture_name in getattr(item, "fixturenames", ()):
-        for definition in fixture_info.name2fixturedefs.get(fixture_name, ()):
-            function = getattr(definition, "func", None)
-            code = getattr(function, "__code__", None)
-            namespace = getattr(function, "__globals__", {})
-            if code is None:
-                continue
-            for symbol in code.co_names:
-                candidate = namespace.get(symbol)
-                simulator = getattr(candidate, "SIMULATOR", None)
-                if get_backend(str(simulator or "")).forked_execution:
+    pending = [
+        definition.func
+        for name in getattr(item, "fixturenames", ())
+        for definition in fixture_info.name2fixturedefs.get(name, ())
+    ]
+    seen = set()
+    while pending:
+        function = inspect.unwrap(pending.pop())
+        if not inspect.isfunction(function) or id(function) in seen:
+            continue
+        seen.add(id(function))
+        namespace = dict(function.__globals__)
+        namespace.update(inspect.getclosurevars(function).nonlocals)
+        candidate = None
+        for instruction in dis.get_instructions(function):
+            if instruction.opname in {"LOAD_GLOBAL", "LOAD_NAME", "LOAD_DEREF"}:
+                candidate = namespace.get(instruction.argval)
+            elif instruction.opname in {"LOAD_ATTR", "LOAD_METHOD"}:
+                # Read static namespaces only; avoid executing module __getattr__
+                # or descriptors while examining a possible factory.
+                candidate = vars(candidate).get(instruction.argval) if (
+                    inspect.ismodule(candidate) or inspect.isclass(candidate)
+                ) else None
+            else:
+                candidate = None
+            if inspect.isclass(candidate):
+                simulator = inspect.getattr_static(candidate, "SIMULATOR", None)
+                if isinstance(simulator, str) and get_backend(simulator).forked_execution:
                     return True
+            elif inspect.isfunction(candidate):
+                pending.append(candidate)
     return False
 
 

@@ -65,3 +65,12 @@ def html_report_detail(
     if not entry.is_relative_to(output_dir):
         raise ValueError("HTML entry must be inside the coverage output directory")
     return quote(entry.relative_to(output_dir.parent).as_posix(), safe="/")
+
+
+def write_line_coverage_summary(summary: dict, output_dir: Path) -> None:
+    """Keep the established line_dat JSON readable by existing test checkers."""
+    if output_dir.name != "coverage_data":
+        return
+    path = output_dir.parent / "line_dat" / "code_coverage.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

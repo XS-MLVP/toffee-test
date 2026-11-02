@@ -1055,3 +1055,19 @@ def test_vcs_native_report_applies_dut_source_exclusions(tmp_path):
     )
     assert "source-file exclusions applied" in result.report_scope
     assert (tmp_path / "coverage_data" / "urg.hier").read_text() == "-file *Top_top.sv\n"
+
+
+def test_vcs_current_report_preserves_checker_line_summary(tmp_path):
+    """UCAgent checkers keep consuming overview and uncovered at their existing path."""
+    database = make_vdb(tmp_path / "Top.vdb")
+    helper = make_fake_helper(tmp_path)
+    result = convert_code_coverage(
+        [CoverageRecord("vcs", str(database), helper=str(helper))],
+        tmp_path / "coverage_data", urg=str(make_fake_urg(tmp_path)),
+    )
+    compact = json.loads((tmp_path / result.summary_file).read_text())
+    checker = json.loads((tmp_path / "line_dat/code_coverage.json").read_text())
+    assert "overview" not in compact
+    assert checker["overview"]["total"]["line"] == result.metrics["line"].total
+    assert checker["overview"]["miss"]["line"] == result.metrics["line"].uncovered
+    assert checker["uncovered"]["data"]["/rtl/top.v"]["modules"]["Top"]["line"] == ["11-12", "15-15"]

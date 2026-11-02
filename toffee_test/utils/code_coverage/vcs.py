@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .common import html_report_detail
+from .common import html_report_detail, write_line_coverage_summary
 from .models import CodeCoverageResult, CoverageRecord, MetricSummary
 
 
@@ -1028,6 +1028,7 @@ def convert_vcs_coverage(
             "scope": report_scope,
             "metrics": {name: metric.to_dict() for name, metric in report_metrics.items()},
         }
+    write_line_coverage_summary(final_report, output_dir)
     if normalized_layout:
         _externalize_atom_catalog(final_report, output_dir)
         _compact_cumulative(final_report)

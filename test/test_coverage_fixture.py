@@ -99,12 +99,17 @@ def test_explicit_dut_none_disables_inference():
     assert json.loads(request.node.__line_coverage__)["simulator"] == "verilator"
 
 
-def test_unavailable_vcs_context_fails_before_registration():
-    """A suffix is not sufficient to invent a native database or simulator record."""
+def test_unresolved_vcs_registration_cannot_be_reported_as_real_coverage(tmp_path):
+    """Raw path receipts remain valid, but a suffix alone proves no native coverage."""
+    from toffee_test.utils.code_coverage import convert_code_coverage
+
     request = SimpleNamespace(node=SimpleNamespace(), scope="function")
-    with pytest.raises(RuntimeError, match="explicit dut"):
-        set_line_coverage(request, "case.vdb")
-    assert not hasattr(request.node, "__line_coverage__")
+    set_line_coverage(request, str(tmp_path / "case.vdb"))
+    record = json.loads(request.node.__line_coverage__)
+    assert record["simulator"] == "vcs"
+    assert record["helper"] is None
+    with pytest.raises(ValueError, match="invalid VCS coverage database"):
+        convert_code_coverage([record], tmp_path / "coverage_data")
 
 
 def test_old_auto_discovered_dut_fails_closed():

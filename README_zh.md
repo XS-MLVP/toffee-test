@@ -90,6 +90,16 @@ pytest -n 2
 `--toffee-forked` 仍可作为兼容参数显式传入。该行为支持 POSIX `fork`。DUT 应由 Picker 重新导出，并包含
 `GetSimulator()`、`GetCoveragePath()` 和覆盖率 helper；旧 DUT 包应重新编译。
 
+已有的 `fixture → create_dut() → DUT` 用法可以继续使用，无需改为
+`toffee_request.create_dut()`。自动识别会检查引用的 Python 工厂函数、闭包及模块属性，
+在创建 VCS DUT 之前进入子进程；函数式 fixture 中原有的 yield、覆盖率上报和
+`Finish()` 顺序保持不变。报告标题和用户信息会随测试报告传回主进程。
+
+覆盖率汇总同时写入 `line_dat/code_coverage.json`，保留 `overview` 和
+`uncovered` 字段，现有 UCAgent checker 不需要修改路径或解析方式。
+Linux 下外层工具终止 pytest 时，逐例子进程会随之终止；单例超时后先发送
+SIGTERM，未退出则升级为 SIGKILL，避免测试进程继续占用输出管道。
+
 仿真器差异由后端注册表管理：后端可以声明是否需要进程隔离、波形命名和覆盖率文件
 命名；覆盖率转换器通过 `register_coverage_provider()` 注册。VCS 使用 FSDB 和 VCS
 原生覆盖率查询，Verilator 使用 FST/数据文件和 LCOV，pytest 主执行流程不需要知道
