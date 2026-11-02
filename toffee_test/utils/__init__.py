@@ -29,14 +29,13 @@ def parse_lines(text: str):
 
 
 def convert_line_coverage(line_coverage_list: list[dict], output_dir):
-    from .verilator_coverage import convert_verilator_coverage
-    merged_info ,final_ignore_info = convert_verilator_coverage(line_coverage_list, output_dir)
-    su, so, se = exe_cmd(["genhtml", "--branch-coverage", merged_info, "-o", output_dir])
-    if not su:
-        import warnings
-        #warnings.warn(f"Failed to convert line coverage: {se}")
-        return (0, 0), final_ignore_info
-    return parse_lines(so), final_ignore_info
+    from .code_coverage import convert_code_coverage
+
+    result = convert_code_coverage(line_coverage_list, output_dir)
+    line = result.metrics.get("line")
+    if line is None or not line.available:
+        return (0, 0), result.ignore
+    return (line.covered, line.total), result.ignore
 
 def base64_encode(data):
     input_bytes = json.dumps(data).encode('utf-8')

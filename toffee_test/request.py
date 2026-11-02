@@ -1,9 +1,14 @@
 import os
+import re
+import sys
 from collections.abc import Iterable
+from pathlib import Path
 from zlib import crc32
 
 from .reporter import set_func_coverage
-from .reporter import set_line_coverage
+from .reporter import set_code_coverage
+from .utils.code_coverage import CoverageRecord
+from .simulators import get_backend, simulator_name
 
 
 class ToffeeRequest:
@@ -17,6 +22,11 @@ class ToffeeRequest:
 
         self.waveform_filename = None
         self.coverage_filename = None
+        self.coverage_database = None
+        self.coverage_helper = None
+        self.coverage_simulator = None
+        self.coverage_test = None
+        self.simulator_backend = None
 
     def __add_cov_sample(self, cov_groups):
         """
@@ -106,6 +116,15 @@ class ToffeeRequest:
         # Options for running without waveform/coverage generation from the DUT.
         wave_format: str = self.dut.GetWaveFormat()
         use_code_cov: bool = self.dut.GetCovMetrics() != 0
+        if use_code_cov and not self.coverage_helper:
+            module = sys.modules.get(self.dut.__class__.__module__)
+            module_file = getattr(module, "__file__", None)
+            if module_file:
+                candidate = Path(module_file).resolve().parent / "coverage" / "coverage"
+                if candidate.is_file():
+                    self.coverage_helper = str(candidate)
+        self.coverage_simulator = simulator_name(self.dut)
+        self.simulator_backend = get_backend(self.coverage_simulator)
 
         # Set default export name when generate report
         if self.__need_report():
@@ -118,12 +137,14 @@ class ToffeeRequest:
             default_export_name = "_".join((dut_cls.__name__, request_name, path_hash))
             # Set default waveform name
             if wave_format:
-                default_name = ".".join((default_export_name, wave_format))
+                default_name = self.simulator_backend.waveform_name(
+                    default_export_name, self.dut
+                )
                 self.waveform_filename = "/".join((report_dir, default_name))
             # Set default coverage name
             if use_code_cov:
-                default_name = ".".join((default_export_name, "dat"))
-                self.coverage_filename = "/".join((report_dir, default_name))
+                default_name = self.simulator_backend.coverage_name(default_export_name)
+                self.coverage_filename = os.path.join(report_dir, default_name)
 
         # Also export functional coverage
         if not self.__no_func() and self.cov_groups:
@@ -144,6 +165,12 @@ class ToffeeRequest:
                 self.coverage_filename = coverage_filename
             if self.coverage_filename:
                 self.dut.SetCoverage(self.coverage_filename)
+                self.coverage_database = self.simulator_backend.coverage_path(
+                    self.dut, self.coverage_filename
+                )
+                if self.coverage_simulator == "vcs":
+                    name = Path(self.coverage_filename).stem or self.dut.__class__.__name__
+                    self.coverage_test = re.sub(r"[^A-Za-z0-9_-]", "_", name)
 
         return self.dut
 
@@ -169,15 +196,40 @@ class ToffeeRequest:
         """
 
         if self.dut is not None:
-            self.dut.Finish()
-
             use_code_cov: bool = self.dut.GetCovMetrics() != 0
+            if use_code_cov and not self.coverage_database and self.__need_report():
+                self.coverage_database = self.simulator_backend.coverage_path(
+                    self.dut, self.coverage_filename
+                )
+            status = self.dut.Finish()
+            # Picker-generated Python DUTs expose Finish() as a void method;
+            # older wrappers returned integer status.  Both None and zero
+            # mean successful completion.
+            if not self.simulator_backend.finish_ok(status):
+                raise RuntimeError(f"DUT Finish() failed with status {status}")
 
             if self.__need_report():
                 if not self.__no_func():
                     set_func_coverage(request, self.cov_groups)
                 if use_code_cov:
-                    set_line_coverage(request, self.coverage_filename, self.ignores)
+                    worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+                    set_code_coverage(
+                        request,
+                        CoverageRecord(
+                            simulator=self.coverage_simulator,
+                            database=self.coverage_database,
+                            test=self.coverage_test,
+                            helper=self.coverage_helper,
+                            nodeid=getattr(
+                                self.request.node,
+                                "nodeid",
+                                f"{self.request.path}::{self.request.node.name}",
+                            ),
+                            summary_scope="test",
+                            ignore=list(self.ignores or []),
+                            worker=worker,
+                        ),
+                    )
 
         for g in self.cov_groups:
             g.clear()

@@ -16,6 +16,8 @@ from .reporter import set_output_report
 from .utils import base64_decode
 from .utils import get_toffee_custom_key_value
 from .utils import set_toffee_custom_key_value
+from .forked import run_simulator_protocol
+from .simulators import get_backend
 
 """
 toffee plugin
@@ -81,6 +83,32 @@ def _resolve_ini_report_dir(config: pytest.Config, report_dir: str) -> str:
     return os.path.normpath(os.path.join(os.fspath(inipath.parent), report_dir))
 
 
+def _fixture_declares_forked_dut(item: pytest.Item) -> bool:
+    """Find a fork-capable simulator DUT class referenced by a fixture.
+
+    This preflight avoids forking ordinary tests.  The runtime check in
+    ``ToffeeRequest.create_dut`` remains authoritative for the actual DUT.
+    Fixtures that hide DUT creation behind a dynamic factory should add a
+    future explicit capability marker rather than relying on this heuristic.
+    """
+    fixture_info = getattr(item, "_fixtureinfo", None)
+    if fixture_info is None:
+        return False
+    for fixture_name in getattr(item, "fixturenames", ()):
+        for definition in fixture_info.name2fixturedefs.get(fixture_name, ()):
+            function = getattr(definition, "func", None)
+            code = getattr(function, "__code__", None)
+            namespace = getattr(function, "__globals__", {})
+            if code is None:
+                continue
+            for symbol in code.co_names:
+                candidate = namespace.get(symbol)
+                simulator = getattr(candidate, "SIMULATOR", None)
+                if get_backend(str(simulator or "")).forked_execution:
+                    return True
+    return False
+
+
 @pytest.hookimpl(trylast=True, optionalhook=True)
 def pytest_reporter_context(context, config):
     process_context(context, config)
@@ -104,8 +132,17 @@ def pytest_runtest_call(item):
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    """Attach portable exception and coverage data before worker transport."""
     outcome = yield
     report = outcome.get_result()
+    # CallInfo is not transported by forked/xdist workers. Keep only plain
+    # exception data on TestReport, whose extra attributes survive transport.
+    if report.failed and call.excinfo is not None:
+        report.__toffee_exception__ = {
+            "phase": report.when,
+            "type": call.excinfo.type.__name__,
+            "message": str(call.excinfo.value)[:2000],
+        }
     return process_func_coverage(item, call, report)
 
 
@@ -152,9 +189,45 @@ def pytest_addoption(parser: pytest.Parser):
         help="Run test without functional coverage.",
     )
 
+    group.addoption(
+        "--case-coverage",
+        action="store_true",
+        default=False,
+        help="Generate normalized code coverage data for every testcase.",
+    )
+    group.addoption(
+        "--toffee-forked",
+        action="store_true",
+        default=False,
+        help="Force the VCS DUT isolation backend (enabled automatically for VCS DUTs).",
+    )
+    group.addoption(
+        "--toffee-forked-timeout",
+        action="store",
+        type=float,
+        default=300.0,
+        help="Timeout in seconds for one forked VCS test.",
+    )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item, nextitem=None):
+    if os.environ.get("TOFFEE_TEST_FORKED_CHILD"):
+        return None
+    if not _fixture_declares_forked_dut(item):
+        return None
+    run_simulator_protocol(
+        item,
+        nextitem=nextitem,
+        timeout=item.config.getoption("--toffee-forked-timeout"),
+    )
+    return True
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
+    if config.getoption("--case-coverage") and not config.getoption("--toffee-report"):
+        raise pytest.UsageError("--case-coverage requires --toffee-report")
     if hasattr(config, "workerinput"):
         config._toffee_test_start_time = config.workerinput["toffee_test_start_time"]
     else:

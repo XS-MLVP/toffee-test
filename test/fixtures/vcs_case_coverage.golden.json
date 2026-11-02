@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "description": "Code coverage summary. `covered.data` contains covered items.",
+  "simulator": "vcs",
+  "metadata": {
+    "database": "<DATABASE>",
+    "tests": ["case_a"],
+    "exclude": ["/rtl/top.v:12"],
+    "detail_level": {
+      "line": "range",
+      "toggle": "base_signal_transitions",
+      "branch": "object_arms"
+    }
+  },
+  "overview": {
+    "total": {"line": 4, "toggle": 3, "branch": 2},
+    "covered": {"line": 2, "toggle": 1, "branch": 1}
+  },
+  "covered": {
+    "schema": {
+      "file_path": {
+        "total": ["line", "toggle", "branch"],
+        "covered": ["line", "toggle", "branch"],
+        "modules": {
+          "module_name": {
+            "total": ["line", "toggle", "branch"],
+            "covered": ["line", "toggle", "branch"],
+            "line": ["inclusive start-end ranges"],
+            "toggle": ["base signal objects with covered transitions and bit ranges"],
+            "branch": ["branch objects with covered arms"]
+          }
+        }
+      }
+    },
+    "data": {
+      "/rtl/top.v": {
+        "total": {"line": 4, "toggle": 3, "branch": 2},
+        "covered": {"line": 2, "toggle": 1, "branch": 1},
+        "modules": {
+          "Top": {
+            "total": {"line": 4, "toggle": 3, "branch": 2},
+            "covered": {"line": 2, "toggle": 1, "branch": 1},
+            "line": ["10-10", "13-13"],
+            "toggle": [
+              {
+                "line": 20,
+                "column": 0,
+                "object": "data",
+                "transitions": ["0 -> 1"],
+                "atom_count": 1,
+                "aggregation": "base_signal",
+                "bits": {"0 -> 1": ["0-0"]}
+              }
+            ],
+            "branch": [
+              {"line": 30, "column": 0, "object": "valid", "arms": ["true"], "atom_count": 1}
+            ]
+          }
+        }
+      }
+    }
+  },
+  "detail_summary": {
+    "line": {"metric_items": 2, "enumerated_atoms": 2, "gap_count": 2, "unresolved": 0},
+    "toggle": {"metric_items": 1, "enumerated_atoms": 1, "gap_count": 1, "unresolved": 0},
+    "branch": {"metric_items": 1, "enumerated_atoms": 1, "gap_count": 1, "unresolved": 0}
+  },
+  "scope": {
+    "type": "testcase",
+    "nodeid": "tests/test_top.py::test_a",
+    "testdata": "case_a"
+  }
+}
