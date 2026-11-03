@@ -1,3 +1,4 @@
+import dis
 import inspect
 import os
 import shlex
@@ -16,6 +17,8 @@ from .reporter import set_output_report
 from .utils import base64_decode
 from .utils import get_toffee_custom_key_value
 from .utils import set_toffee_custom_key_value
+from .forked import run_simulator_protocol
+from .simulators import get_backend
 
 """
 toffee plugin
@@ -81,6 +84,50 @@ def _resolve_ini_report_dir(config: pytest.Config, report_dir: str) -> str:
     return os.path.normpath(os.path.join(os.fspath(inipath.parent), report_dir))
 
 
+def _fixture_declares_forked_dut(item: pytest.Item) -> bool:
+    """Inspect fixture factories without constructing a native DUT in the parent.
+
+    Follow referenced Python functions, closures and module attributes so that
+    existing ``fixture -> create_dut -> DUT`` APIs need no isolation marker.
+    A visited set bounds recursive helper graphs; no inspected callable runs.
+    """
+    fixture_info = getattr(item, "_fixtureinfo", None)
+    if fixture_info is None:
+        return False
+    pending = [
+        definition.func
+        for name in getattr(item, "fixturenames", ())
+        for definition in fixture_info.name2fixturedefs.get(name, ())
+    ]
+    seen = set()
+    while pending:
+        function = inspect.unwrap(pending.pop())
+        if not inspect.isfunction(function) or id(function) in seen:
+            continue
+        seen.add(id(function))
+        namespace = dict(function.__globals__)
+        namespace.update(inspect.getclosurevars(function).nonlocals)
+        candidate = None
+        for instruction in dis.get_instructions(function):
+            if instruction.opname in {"LOAD_GLOBAL", "LOAD_NAME", "LOAD_DEREF"}:
+                candidate = namespace.get(instruction.argval)
+            elif instruction.opname in {"LOAD_ATTR", "LOAD_METHOD"}:
+                # Read static namespaces only; avoid executing module __getattr__
+                # or descriptors while examining a possible factory.
+                candidate = vars(candidate).get(instruction.argval) if (
+                    inspect.ismodule(candidate) or inspect.isclass(candidate)
+                ) else None
+            else:
+                candidate = None
+            if inspect.isclass(candidate):
+                simulator = inspect.getattr_static(candidate, "SIMULATOR", None)
+                if isinstance(simulator, str) and get_backend(simulator).forked_execution:
+                    return True
+            elif inspect.isfunction(candidate):
+                pending.append(candidate)
+    return False
+
+
 @pytest.hookimpl(trylast=True, optionalhook=True)
 def pytest_reporter_context(context, config):
     process_context(context, config)
@@ -104,8 +151,17 @@ def pytest_runtest_call(item):
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
+    """Attach portable exception and coverage data before worker transport."""
     outcome = yield
     report = outcome.get_result()
+    # CallInfo is not transported by forked/xdist workers. Keep only plain
+    # exception data on TestReport, whose extra attributes survive transport.
+    if report.failed and call.excinfo is not None:
+        report.__toffee_exception__ = {
+            "phase": report.when,
+            "type": call.excinfo.type.__name__,
+            "message": str(call.excinfo.value)[:2000],
+        }
     return process_func_coverage(item, call, report)
 
 
@@ -152,9 +208,45 @@ def pytest_addoption(parser: pytest.Parser):
         help="Run test without functional coverage.",
     )
 
+    group.addoption(
+        "--case-coverage",
+        action="store_true",
+        default=False,
+        help="Generate normalized code coverage data for every testcase.",
+    )
+    group.addoption(
+        "--toffee-forked",
+        action="store_true",
+        default=False,
+        help="Force the VCS DUT isolation backend (enabled automatically for VCS DUTs).",
+    )
+    group.addoption(
+        "--toffee-forked-timeout",
+        action="store",
+        type=float,
+        default=300.0,
+        help="Timeout in seconds for one forked VCS test.",
+    )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item, nextitem=None):
+    if os.environ.get("TOFFEE_TEST_FORKED_CHILD"):
+        return None
+    if not _fixture_declares_forked_dut(item):
+        return None
+    run_simulator_protocol(
+        item,
+        nextitem=nextitem,
+        timeout=item.config.getoption("--toffee-forked-timeout"),
+    )
+    return True
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
+    if config.getoption("--case-coverage") and not config.getoption("--toffee-report"):
+        raise pytest.UsageError("--case-coverage requires --toffee-report")
     if hasattr(config, "workerinput"):
         config._toffee_test_start_time = config.workerinput["toffee_test_start_time"]
     else:

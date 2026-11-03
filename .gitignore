@@ -2,6 +2,7 @@
 toffee_test/__version.py
 
 # Picker Files
+/outputs/
 reports/
 UT_*/
 picker_out_*/

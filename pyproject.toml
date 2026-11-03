@@ -44,3 +44,6 @@ source = "vcs"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "toffee_test/__version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]

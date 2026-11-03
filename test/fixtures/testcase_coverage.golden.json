@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "simulator": "vcs",
+  "databases": ["<DATABASE>"],
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "error": 0,
+    "coverage_errors": 0
+  },
+  "testcases": {
+    "tests/test_top.py::test_sample[one]": {
+      "id": "5ff584f5901f",
+      "status": "passed",
+      "duration": 0.25,
+      "source": {
+        "file": "<SOURCE>",
+        "function": "test_sample[one]"
+      },
+      "included_in_merged": true,
+      "functional": {
+        "declared": ["FG-CORE/FC-PATH/CK-MISS"],
+        "hit": [
+          {
+            "id": "FG-CORE/FC-PATH/CK-HIT",
+            "count": 3
+          }
+        ]
+      },
+      "coverage": "coverage_data/cases/5ff584f5901f/observation.json",
+      "code": {
+        "line": {
+          "covered": 7,
+          "total": 10,
+          "miss": 3,
+          "rate": 70.0
+        }
+      },
+      "error": "",
+      "provider": {
+        "simulator": "vcs",
+        "database": "<DATABASE>",
+        "testdata": "case_a",
+        "worker": "master"
+      }
+    }
+  },
+  "functional_index": {
+    "FG-CORE/FC-PATH/CK-HIT": {
+      "declared_by": [],
+      "hit_by": ["tests/test_top.py::test_sample[one]"]
+    },
+    "FG-CORE/FC-PATH/CK-MISS": {
+      "declared_by": ["tests/test_top.py::test_sample[one]"],
+      "hit_by": []
+    }
+  }
+}
