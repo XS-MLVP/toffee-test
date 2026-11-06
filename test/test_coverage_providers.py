@@ -140,7 +140,7 @@ def coverage(request):
     pytester.makepyfile('def test_example(coverage):\n    assert True\n')
     args = ['--toffee-report', '--report-name=index.html', '--report-dir=report', '--report-dump-json']
     if enabled:
-        args += ['--coverage-gui=xpra', '--coverage-application-resolver=coverage_host:resolve',
+        args += ['--report-custom=coverage-gui-xpra', '--coverage-application-resolver=coverage_host:resolve',
                  '--coverage-application-workspace=' + str(pytester.path)]
     result = pytester.runpytest(*args)
     result.assert_outcomes(passed=1)

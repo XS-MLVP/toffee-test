@@ -63,7 +63,7 @@ class UvsCoverageProvider(CoverageProvider):
         href may also be relative to index.html, e.g. "apps/uvd.html".
         It must open a page, not a POST-only session-creation API endpoint.
         Toffee validates and displays the URL without calling a resolver.
-        mode="xpra" shows it only with --coverage-gui=xpra; HTML always shows.
+        mode="xpra" shows it only with --report-custom=coverage-gui-xpra; HTML always shows.
 
         For click-to-launch Xpra, generate your own page or use the optional helper:
             from .xpra import write_xpra_link

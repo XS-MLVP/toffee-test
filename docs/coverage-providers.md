@@ -194,9 +194,9 @@ def build_details(self, result, output_dir):
 `viewer` 对应宿主配置的应用名称，`label` 是主报告中的链接文字。
 provider 不需要填写 Xpra API URL，也不需要启动应用。
 
-- 默认 `--coverage-gui=off`：只显示 HTML。
-- `--coverage-gui=native`：桌面协议处理器直接启动本地应用，新增查看器需配置本地命令。
-- `--coverage-gui=xpra`：显示 provider 提供的应用页面链接，或由 provider 生成启动页；UCAgent 只选择 GUI 模式。
+- 默认不传 `--report-custom`：只显示 HTML。
+- `--report-custom=coverage-gui-native`：桌面协议处理器直接启动本地应用，新增查看器需配置本地命令。
+- `--report-custom=coverage-gui-xpra`：显示 provider 提供的应用页面链接，或由 provider 生成启动页；UCAgent 只选择 GUI 模式。
 
 [UVS 骨架](../toffee_test/utils/code_coverage/uvs.py) 也按同样的两个部分组织：
 
@@ -216,11 +216,18 @@ UVS 目前还没有实际覆盖率转换实现，数据库格式和 UVD 覆盖�
 
 ## Selecting a GUI mode
 
+`--report-custom=OPTION` is a repeatable list option. Each occurrence adds one
+item to `config.option.report_custom`; it is not a comma-separated string or a
+JSON array. Currently supported values are `coverage-gui-native` and
+`coverage-gui-xpra`. They are mutually exclusive; unknown values are errors.
+Repeated identical values are allowed. With no options, reports show HTML only.
+This replaces the previous dedicated `--coverage-gui` option.
+
 | pytest option | Detail links | Click behavior |
 |---|---|---|
-| `--coverage-gui=off` (default) | HTML only | Open native HTML |
-| `--coverage-gui=native` | HTML and available application descriptors | Desktop protocol handler launches the configured executable |
-| `--coverage-gui=xpra` | HTML and provider-owned Xpra links | Host launches its Xpra session |
+| no `--report-custom` options (default) | HTML only | Open native HTML |
+| `--report-custom=coverage-gui-native` | HTML and available application descriptors | Desktop protocol handler launches the configured executable |
+| `--report-custom=coverage-gui-xpra` | HTML and provider-owned Xpra links | Host launches its Xpra session |
 
 Labels remain provider-owned, such as `HTML | Verdi` or `HTML | UVD`.
 An absent HTML or application artifact is not invented by selecting a mode.
@@ -245,7 +252,7 @@ Generate the report and open `reports/index.html` directly in the browser
 
 ```bash
 pytest --toffee-report --report-dir=reports --report-name=index.html \
-  --coverage-gui=native
+  --report-custom=coverage-gui-native
 ```
 
 Clicking Verdi invokes the desktop protocol handler and directly starts:
@@ -308,7 +315,7 @@ real arguments; the skeleton does not assume a UVD command-line syntax.
 Generate reports using:
 
 ```bash
-pytest --toffee-report --coverage-gui=xpra
+pytest --toffee-report --report-custom=coverage-gui-xpra
 ```
 
 Providers can return existing viewer pages directly:
@@ -349,7 +356,7 @@ through the workspace browser, with the viewer executable available in the host
 environment. Reopening the page creates another session; no coverage-specific
 session cache or configuration is maintained in UCAgent.
 
-`RunUnityChipTest` only supplies `--coverage-gui=xpra`. No resolver, workspace
+`RunUnityChipTest` only supplies `--report-custom=coverage-gui-xpra`. No resolver, workspace
 metadata or entry-point registration is required, including source-tree `make`
 launches. Provider-owned pages are responsible for session lifetime and errors.
 
@@ -433,7 +440,7 @@ When the report is served at
 Do not use an absolute filesystem path as the browser link. URL-encode spaces
 in URL components, for example `native/my%20report/index.html`.
 
-### Application link and Xpra API (`--coverage-gui=xpra`)
+### Application link and Xpra API (`--report-custom=coverage-gui-xpra`)
 
 A provider can return an existing viewer URL, or generate a page with a request
 like the following. This is the host's generic API, not a coverage-specific API:

@@ -177,7 +177,9 @@ def coverage(request):
 ''')
     pytester.makepyfile('def test_example(coverage):\n    assert True\n')
     args = ["--toffee-report", "--report-name=index.html", "--report-dir=report",
-            "--report-dump-json", "--coverage-gui=" + mode.split("-")[0]]
+            "--report-dump-json"]
+    if mode != "off":
+        args.append("--report-custom=coverage-gui-" + mode.split("-")[0])
     if mode == "xpra-provider":
         conftest = pytester.path / "conftest.py"
         text = conftest.read_text().replace('return CodeCoverageResult(', 'result = CodeCoverageResult(')
@@ -221,16 +223,16 @@ def pytest_configure(config):
     config.toffee_coverage_application_resolver = lambda detail, context: "host.html"
 """)
     pytester.makepyfile("def test_example():\n    assert True\n")
-    result = pytester.runpytest("--coverage-gui=xpra")
+    result = pytester.runpytest("--report-custom=coverage-gui-xpra")
     result.assert_outcomes(passed=1)
 
 
 def test_native_rejects_competing_host_resolver(pytester):
     """A mode cannot accidentally mix local launches and host-generated pages."""
-    result = pytester.runpytest("--coverage-gui=native",
+    result = pytester.runpytest("--report-custom=coverage-gui-native",
                                "--coverage-application-resolver=missing_module:resolve")
     assert result.ret == pytest.ExitCode.USAGE_ERROR
-    result.stderr.fnmatch_lines(["*only used with --coverage-gui=xpra*"])
+    result.stderr.fnmatch_lines(["*only used with --report-custom=coverage-gui-xpra*"])
 
 
 def test_native_anchor_does_not_open_a_browser_tab(tmp_path):
@@ -251,3 +253,25 @@ def test_native_anchor_does_not_open_a_browser_tab(tmp_path):
     native_anchor = next(link for link in links if link["href"] == uri)
     assert "target" not in native_anchor
     assert "data-coverage-application" in native_anchor
+
+
+@pytest.mark.parametrize('options,error', [
+    (['coverage-gui-native', 'coverage-gui-xpra'], 'mutually exclusive'),
+    (['coverage-gui-typo'], 'invalid choice'),
+])
+def test_report_custom_rejects_invalid_options(pytester, options, error):
+    """Misspellings and conflicting GUI modes fail before tests start."""
+    result = pytester.runpytest(*['--report-custom=' + item for item in options])
+    assert result.ret == pytest.ExitCode.USAGE_ERROR
+    result.stderr.fnmatch_lines(['*' + error + '*'])
+
+
+def test_report_custom_is_a_repeatable_list(pytester):
+    """Repeated options remain a list and duplicate flags are harmless."""
+    pytester.makepyfile('''
+def test_options(pytestconfig):
+    assert pytestconfig.getoption("report_custom") == ["coverage-gui-xpra", "coverage-gui-xpra"]
+    assert pytestconfig.option.coverage_gui == "xpra"
+''')
+    pytester.runpytest('--report-custom=coverage-gui-xpra',
+                       '--report-custom=coverage-gui-xpra').assert_outcomes(passed=1)

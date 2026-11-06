@@ -175,8 +175,9 @@ def pytest_runtest_setup(item):
 def pytest_addoption(parser: pytest.Parser):
     group = parser.getgroup("reporter")
     group.addoption(
-        "--coverage-gui", choices=("off", "native", "xpra"), default="off",
-        help="Coverage application links: off (HTML only), native (local desktop application), or xpra (host resolver).",
+        "--report-custom", action="append", default=[], metavar="OPTION",
+        choices=("coverage-gui-native", "coverage-gui-xpra"),
+        help="Repeatable report options: coverage-gui-native or coverage-gui-xpra. Default: HTML only.",
     )
     group.addoption(
         "--coverage-application-resolver", default=None, metavar="MODULE:CALLABLE",
@@ -271,11 +272,18 @@ def _load_application_resolver(resolver_name):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
-    mode = config.getoption("--coverage-gui")
+    custom_options = set(config.getoption("--report-custom"))
+    gui_options = custom_options & {"coverage-gui-native", "coverage-gui-xpra"}
+    if len(gui_options) > 1:
+        raise pytest.UsageError(
+            "--report-custom: coverage-gui-native and coverage-gui-xpra are mutually exclusive"
+        )
+    mode = next(iter(gui_options)).removeprefix("coverage-gui-") if gui_options else "off"
+    config.option.coverage_gui = mode
     resolver_name = config.getoption("--coverage-application-resolver")
     if mode == "native":
         if resolver_name:
-            raise pytest.UsageError("--coverage-application-resolver is only used with --coverage-gui=xpra")
+            raise pytest.UsageError("--coverage-application-resolver is only used with --report-custom=coverage-gui-xpra")
         from .utils.code_coverage.native import resolve_native_detail
         config.toffee_coverage_application_resolver = resolve_native_detail
     elif mode == "xpra":
@@ -405,7 +413,7 @@ mlvp_pre_request = toffee_request
 def pytest_sessionstart(session):
     """Load an optional custom host callback; provider URLs need no resolver."""
     config = session.config
-    if (config.getoption("--coverage-gui") == "xpra"
+    if (config.option.coverage_gui == "xpra"
             and not callable(getattr(config, "toffee_coverage_application_resolver", None))
             and getattr(config, "toffee_coverage_gui_resolver", None) is not None):
         config.toffee_coverage_application_resolver = _load_application_resolver(
