@@ -318,6 +318,9 @@ def test_vcs_merges_selected_testdata_into_new_report(tmp_path):
     assert module["toggle"][0]["transitions"] == ["0 -> 1", "1 -> 0"]
     assert module["branch"][0]["arms"] == ["false"]
     assert result.detail == "line_dat/vcs_urg/dashboard.html"
+    assert [detail.label for detail in result.details] == ["HTML", "Verdi"]
+    assert result.details[1].artifacts == {"database": str(database.resolve())}
+    assert [detail["label"] for detail in result.to_report_dict()["details"]] == ["HTML"]
     assert "Load Failed" in (tmp_path / "line_dat/urg.stderr.log").read_text()
     assert result.warnings
 
@@ -1071,3 +1074,20 @@ def test_vcs_current_report_preserves_checker_line_summary(tmp_path):
     assert checker["overview"]["total"]["line"] == result.metrics["line"].total
     assert checker["overview"]["miss"]["line"] == result.metrics["line"].uncovered
     assert checker["uncovered"]["data"]["/rtl/top.v"]["modules"]["Top"]["line"] == ["11-12", "15-15"]
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_urg_zero_exit_with_design_error_rejects_empty_html(tmp_path, stream):
+    """An HTML shell and zero exit status cannot override URG design errors."""
+    database = make_vdb(tmp_path / "Top.vdb")
+    helper = make_fake_helper(tmp_path)
+    urg = make_fake_urg(tmp_path)
+    with urg.open("a") as output:
+        output.write(f"print('Error-[UCAPI-DNYL] Design not yet loaded', file=sys.{stream})\n")
+    with pytest.raises(RuntimeError, match="UCAPI-DNYL.*coverage is unavailable"):
+        convert_code_coverage(
+            [CoverageRecord('vcs', str(database), helper=str(helper))],
+            tmp_path / 'coverage_data', urg=str(urg),
+        )
+    assert (tmp_path / 'coverage_data/native/vcs_urg/dashboard.html').is_file()
+    assert not (tmp_path / 'coverage_data/cumulative.json').exists()

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Coverage application</title>
+<body><p id="status">Starting coverage application…</p><button id="retry" hidden>Retry</button>
+<script>
+const coverageRequest = __COVERAGE_REQUEST__;
+async function openCoverage() {
+  const status = document.getElementById('status');
+  const retry = document.getElementById('retry');
+  retry.hidden = true;
+  try {
+    const current = new URL(location.href);
+    const marker = current.pathname.indexOf('/workspace/');
+    if (!['http:', 'https:'].includes(current.protocol) || marker < 0)
+      throw new Error('Open this report through the UCAgent workspace browser to use application viewers.');
+    const base = new URL(current.pathname.slice(0, marker) + '/api/xpra/', current.origin);
+    const endpoint = new URL('sessions', base);
+    const sub = current.searchParams.get('sub_workspace') || current.searchParams.get('sub_worspace');
+    if (sub) endpoint.searchParams.set('sub_workspace', sub);
+    const response = await fetch(endpoint, {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(coverageRequest)});
+    const data = await response.json();
+    if (!response.ok) throw new Error([data.detail?.message || 'Cannot start coverage application.', data.detail?.next_action].filter(Boolean).join(' '));
+    location.replace(new URL(data.viewer_path, base).href);
+  } catch (error) {status.textContent = error.message; retry.hidden = false;}
+}
+document.getElementById('retry').onclick = openCoverage;
+openCoverage();
+</script></body></html>

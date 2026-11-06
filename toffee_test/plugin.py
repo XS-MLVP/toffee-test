@@ -1,5 +1,7 @@
 import dis
 import inspect
+import importlib
+from pathlib import Path
 import os
 import shlex
 
@@ -173,6 +175,18 @@ def pytest_runtest_setup(item):
 def pytest_addoption(parser: pytest.Parser):
     group = parser.getgroup("reporter")
     group.addoption(
+        "--coverage-gui", choices=("off", "native", "xpra"), default="off",
+        help="Coverage application links: off (HTML only), native (local desktop application), or xpra (host resolver).",
+    )
+    group.addoption(
+        "--coverage-application-resolver", default=None, metavar="MODULE:CALLABLE",
+        help="Optional custom resolver for application descriptors without a URL.",
+    )
+    group.addoption(
+        "--coverage-application-workspace", default=None, metavar="PATH",
+        help="Override the host workspace (default: pytest invocation directory).",
+    )
+    group.addoption(
         "--toffee-report",
         action="store_true",
         default=False,
@@ -243,8 +257,32 @@ def pytest_runtest_protocol(item, nextitem=None):
     return True
 
 
+def _load_application_resolver(resolver_name):
+    """Load an explicit host callback from CLI options or host metadata."""
+    try:
+        module, name = resolver_name.split(":", 1)
+        resolver = getattr(importlib.import_module(module), name)
+        if not callable(resolver):
+            raise TypeError("resolver is not callable")
+        return resolver
+    except (ValueError, ImportError, AttributeError, TypeError) as error:
+        raise pytest.UsageError(f"Invalid coverage application resolver: {error}") from error
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config):
+    mode = config.getoption("--coverage-gui")
+    resolver_name = config.getoption("--coverage-application-resolver")
+    if mode == "native":
+        if resolver_name:
+            raise pytest.UsageError("--coverage-application-resolver is only used with --coverage-gui=xpra")
+        from .utils.code_coverage.native import resolve_native_detail
+        config.toffee_coverage_application_resolver = resolve_native_detail
+    elif mode == "xpra":
+        if resolver_name:
+            config.toffee_coverage_application_resolver = _load_application_resolver(resolver_name)
+    else:
+        config.toffee_coverage_application_resolver = None
     if config.getoption("--case-coverage") and not config.getoption("--toffee-report"):
         raise pytest.UsageError("--case-coverage requires --toffee-report")
     if hasattr(config, "workerinput"):
@@ -286,8 +324,19 @@ def pytest_configure(config: pytest.Config):
         config.option.toffee_report_dump_json = False
     # Custom key value pair
     ckv = config.getoption("--custom-key-value")
+    custom = base64_decode(ckv) if ckv else {}
     if ckv:
-        set_toffee_custom_key_value(base64_decode(ckv))
+        set_toffee_custom_key_value(custom)
+    gui_options = custom.get("coverage_gui", {})
+    if not isinstance(gui_options, dict):
+        raise pytest.UsageError("custom-key-value coverage_gui must be an object")
+    workspace = gui_options.get("workspace")
+    if workspace is not None and (
+        not isinstance(workspace, str) or not workspace or not Path(workspace).is_absolute()
+    ):
+        raise pytest.UsageError("custom-key-value coverage_gui.workspace must be an absolute path")
+    config.toffee_coverage_gui_workspace = workspace
+    config.toffee_coverage_gui_resolver = gui_options.get("resolver")
 
     if "asyncio_default_fixture_loop_scope" not in config._inicache:
         config._inicache["asyncio_default_fixture_loop_scope"] = "function"
@@ -350,3 +399,15 @@ def toffee_request(request):
 
 
 mlvp_pre_request = toffee_request
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionstart(session):
+    """Load an optional custom host callback; provider URLs need no resolver."""
+    config = session.config
+    if (config.getoption("--coverage-gui") == "xpra"
+            and not callable(getattr(config, "toffee_coverage_application_resolver", None))
+            and getattr(config, "toffee_coverage_gui_resolver", None) is not None):
+        config.toffee_coverage_application_resolver = _load_application_resolver(
+            config.toffee_coverage_gui_resolver
+        )

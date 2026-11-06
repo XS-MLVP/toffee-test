@@ -112,6 +112,26 @@ openFunctionalDetailModal();
 {% endblock %}
 
 {% block coverage %}
+{% macro code_coverage_details(line) -%}
+  {%- if line.details is defined -%}
+    {% for detail in line.details %}{% if not loop.first %} | {% endif %}<a href="{{ detail.href|e }}"{% if detail.kind == 'application' %} data-coverage-application{% endif %} title="{{ detail.scope|default('')|e }}"{% if not detail.href.startswith('toffee-coverage:') %} target="_blank"{% endif %} rel="noopener">{{ detail.label|e }}</a>{% else %}N/A{% endfor %}
+  {%- elif line.detail -%}
+    <a href="{{ line.detail|e }}" target="_blank" rel="noopener">HTML</a>
+  {%- else -%}N/A{%- endif -%}
+{%- endmacro %}
+<script>
+// Keep the host's workspace routing context on relative application pages.
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('a[data-coverage-application]').forEach(link => {
+    const target = new URL(link.href, location.href);
+    if (!['http:', 'https:'].includes(target.protocol) || target.origin !== location.origin) return;
+    new URL(location.href).searchParams.forEach((value, key) => {
+      if (!target.searchParams.has(key)) target.searchParams.set(key, value);
+    });
+    link.href = target.href;
+  });
+});
+</script>
 
 <div id="functional-detail-modal-overlay" class="modal-overlay"></div>
 <div id="functional-detail-modal" class="modal">
@@ -313,6 +333,11 @@ openFunctionalDetailModal();
             <td>N/A</td>
             <td>N/A</td>
             <td>N/A</td>
+            {% elif coverages.line.error or coverages.line.collection_mode == 'deferred' %}
+            <td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>
+            {% elif coverages.line.total == 0 %}
+            <td>N/A</td><td>{{ coverages.line.hints }}</td><td>0</td>
+            <td style="text-align: center; white-space: nowrap;">{{ code_coverage_details(coverages.line) }}</td>
             {% else %}
             {% set line_rate = 0 %}
             {% if coverages.line.total != 0 %}
@@ -323,14 +348,19 @@ openFunctionalDetailModal();
             </td>
             <td>{{ coverages.line.hints }}</td>
             <td>{{ coverages.line.total }}</td>
-            {% if coverages.line.detail %}
-            <td><a href="{{ coverages.line.detail|e }}" target="_blank">View Details</a></td>
-            {% else %}
-            <td>N/A</td>
-            {% endif %}
+            <td style="text-align: center; white-space: nowrap;">{{ code_coverage_details(coverages.line) }}</td>
             {% endif %}
           </tr>
         </table>
+        {% if coverages.line is not none %}
+          {% if coverages.line.error %}
+          <p role="status">Coverage report generation failed: {{ coverages.line.error|e }}</p>
+          {% elif coverages.line.collection_mode == 'deferred' %}
+          <p role="status">Coverage collection is deferred; no result is available yet.</p>
+          {% elif coverages.line.total == 0 %}
+          <p role="status">No countable line coverage data is available. Check coverage instrumentation, the design database, and source exclusions. N/A does not mean 0% coverage.</p>
+          {% endif %}
+        {% endif %}
       </td>
       <td>
         <h3>Functional Coverage</h3>
