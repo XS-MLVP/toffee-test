@@ -7,6 +7,21 @@ from pathlib import Path
 from ..verilator_coverage import convert_verilator_coverage as convert_legacy_verilator
 from .common import html_report_detail, write_line_coverage_summary
 from .models import CodeCoverageResult, CoverageRecord, MetricSummary
+from .provider import CoverageProvider
+
+
+class VerilatorCoverageProvider(CoverageProvider):
+    """Expose Verilator conversion through the common provider contract."""
+
+    simulator_names = ("verilator",)
+
+    def convert_case(self, record, output_dir, **options):
+        """Normalize the testcase's coverage data."""
+        return convert_verilator_case_coverage(record, output_dir, **options)
+
+    def convert_session(self, records, output_dir, **options):
+        """Generate the merged LCOV HTML report."""
+        return convert_verilator_coverage(records, output_dir, **options)
 
 
 def _range_atom_count(values: list[str]) -> int:

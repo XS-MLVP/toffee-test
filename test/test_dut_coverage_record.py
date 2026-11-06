@@ -9,6 +9,15 @@ import pytest
 from toffee_test.reporter import set_line_coverage
 
 
+def test_registered_uvs_record_reaches_coverage_skeleton():
+    """Registered providers need no extra simulator-name branch in fixture reporting."""
+    request = SimpleNamespace(node=SimpleNamespace(), scope="function")
+    set_line_coverage(request, "test.cdb", dut=SimpleNamespace(SIMULATOR="uvs"))
+    record = json.loads(request.node.__line_coverage__)
+    assert record["simulator"] == "uvs"
+    assert record["database"] == "test.cdb"
+
+
 def test_vcs_record_resolves_database_and_helper(tmp_path, monkeypatch):
     """The selected coverage filename becomes testdata, not the database path."""
     module = ModuleType("generated_coverage_dut")

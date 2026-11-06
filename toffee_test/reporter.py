@@ -8,6 +8,7 @@ from typing import Union
 import pytest
 import shutil
 import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from filelock import FileLock
@@ -15,9 +16,11 @@ from toffee.funcov import CovGroup, get_func_full_name
 
 from .utils import get_toffee_custom_key_value
 from .utils.code_coverage import (
+    CoverageReportContext,
     CoverageRecord,
     convert_case_coverage,
     convert_code_coverage,
+    get_coverage_provider,
 )
 
 
@@ -57,7 +60,9 @@ def set_output_report(report_path):
     __output_report_dir__ = report_dir
 
 
-def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99):
+def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99, *,
+                             application_detail_resolver=None, report_context=None,
+                             coverage_gui=None):
     if not line_coverage_list:
         return None
     coverage_error = ""
@@ -77,7 +82,10 @@ def __update_line_coverage__(line_coverage_list: list[dict]=None, line_grate=99)
     try:
         result = convert_code_coverage(line_coverage_list, line_dat_dir)
         return result.to_report_dict(
-            __report_info__.get("line_grate", line_grate)
+            __report_info__.get("line_grate", line_grate),
+            application_detail_resolver=application_detail_resolver,
+            context=report_context,
+            coverage_gui=coverage_gui,
         )
     except Exception as e:
         from toffee.logger import error
@@ -588,8 +596,24 @@ def process_context(context, config):
                 continue
             coverage_line_keys.append(key)
             coverage_line_list.append(lc_data)
+    coverage_options = {}
+    mode = getattr(config.option, "coverage_gui", "off")
+    if mode != "off":
+        coverage_options["coverage_gui"] = mode
+    resolver = (getattr(config, "toffee_coverage_application_resolver", None)
+                if getattr(config.option, "coverage_gui", "off") != "off" else None)
+    if resolver is not None:
+        workspace = (
+            getattr(config.option, "coverage_application_workspace", None)
+            or getattr(config, "toffee_coverage_gui_workspace", None)
+            or config.invocation_params.dir
+        )
+        coverage_options.update(
+            application_detail_resolver=resolver,
+            report_context=CoverageReportContext(Path(workspace).resolve(), Path(__output_report_dir__).resolve()),
+        )
     context["coverages"] = {
-        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99)),
+        "line": __update_line_coverage__(coverage_line_list, global_report_info.get("line_grate", 99), **coverage_options),
         "functional": __update_func_coverage__(coverage_func_list),
     }
     context["case_coverage"] = (
@@ -716,8 +740,8 @@ def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *,
                 raise RuntimeError("VCS coverage database or coverage/coverage helper is unavailable; regenerate the DUT with coverage enabled")
             helper = str(candidate)
             test = normalize_vcs_testdata_name(datfile)
-        elif simulator != "verilator":
-            raise ValueError(f"Unsupported coverage simulator: {simulator}")
+        else:
+            get_coverage_provider(simulator)
     set_code_coverage(
         request,
         CoverageRecord(simulator=simulator, database=str(database), test=test, helper=helper,

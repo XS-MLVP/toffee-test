@@ -11,11 +11,47 @@ from pathlib import Path
 from typing import Any
 
 from .common import html_report_detail, write_line_coverage_summary
-from .models import CodeCoverageResult, CoverageRecord, MetricSummary
+from .models import ApplicationDetail, CodeCoverageResult, CoverageRecord, MetricSummary
+from .provider import CoverageProvider
 
 
 VCS_METRICS = ("line", "branch", "toggle", "condition", "fsm")
 PICKER_VCS_SCHEMA_VERSION = 1
+
+
+class VcsCoverageProvider(CoverageProvider):
+    """Retain helper/URG processing and advertise the validated VDB to GUI hosts."""
+
+    simulator_names = ("vcs",)
+
+    def convert_case(self, record, output_dir, **options):
+        """Query the native testcase coverage helper."""
+        return convert_vcs_case_coverage(record, output_dir, **options)
+
+    def convert_session(self, records, output_dir, **options):
+        """Produce the session result through the existing URG pipeline."""
+        return convert_vcs_coverage(records, output_dir, **options)
+
+    def build_details(self, result, output_dir):
+        """Offer HTML and the native database without launching an application."""
+        details = super().build_details(result, output_dir)
+        if not result.error and len(result.databases) == 1:
+            details.append(ApplicationDetail(
+                viewer="verdi", label="Verdi", artifacts={"database": result.databases[0]},
+                scope="Native VDB: full hierarchy and all database tests; report filters are not applied.",
+            ))
+            from .xpra import write_xpra_link
+            try:
+                details.append(ApplicationDetail(
+                    viewer="verdi", label="Verdi", mode="xpra",
+                    href=write_xpra_link(output_dir,
+                        ["verdi", "-cov", "-covdir", str(Path(result.databases[0]).resolve())],
+                        label="Verdi"),
+                    scope="Native VDB: full hierarchy and all database tests; report filters are not applied.",
+                ))
+            except (OSError, ValueError) as error:
+                result.warnings.append(f"Verdi Xpra link unavailable: {error}")
+        return details
 
 
 def find_urg_entry(output_dir: Path) -> Path | None:
@@ -992,6 +1028,13 @@ def convert_vcs_coverage(
     stderr_log = output_dir / "urg.stderr.log"
     stdout_log.write_text(completed.stdout, encoding="utf-8")
     stderr_log.write_text(completed.stderr, encoding="utf-8")
+    # URG can emit an HTML shell and exit zero even when design loading failed.
+    error_codes = sorted(set(re.findall(r"(?m)^\s*Error-\[([^]\r\n]+)\]", completed.stdout + "\n" + completed.stderr)))
+    if error_codes:
+        raise RuntimeError(
+            f"URG reported {', '.join(error_codes[:8])}; coverage is unavailable. "
+            f"Verify the complete compiled VDB and its matching test data; see '{stderr_log}'"
+        )
     entry = find_urg_entry(urg_output)
     if completed.returncode != 0 or entry is None:
         reason = f"exit code {completed.returncode}" if completed.returncode else "no HTML entry"

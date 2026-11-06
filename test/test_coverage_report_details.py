@@ -90,16 +90,17 @@ def test_report_keeps_failure_diagnostics_out_of_master_layout(tmp_path, monkeyp
     line = reporter.__update_line_coverage__([{'database': 'missing'}])
     html = render_coverage(line)
     assert 'native report <failed>' in line['error']
-    assert 'Coverage report generation failed:' not in html
-    assert '&lt;failed&gt;' not in html
+    assert 'Coverage report generation failed:' in html
+    assert '&lt;failed&gt;' in html
     assert 'View Details' not in html
 
 
 def test_zero_line_coverage_still_links_to_native_other_metrics():
     line = CodeCoverageResult('vcs', detail='coverage_data/native/vcs_urg/dashboard.html').to_report_dict()
     html = render_coverage(line)
-    assert 'View Details' in html
-    assert '0%' in html
+    assert '>HTML</a>' in html
+    assert 'No countable line coverage data' in html
+    assert '>0%' not in html
 
 
 def test_report_keeps_deferred_and_warning_metadata_out_of_master_layout():
@@ -109,7 +110,7 @@ def test_report_keeps_deferred_and_warning_metadata_out_of_master_layout():
     }
     html = render_coverage(line)
     assert line['warnings'] == ['Source <unavailable>']
-    assert 'Coverage collection is deferred' not in html
+    assert 'Coverage collection is deferred' in html
     assert 'Source &lt;unavailable&gt;' not in html
     assert 'View Details' not in html
 
@@ -130,7 +131,7 @@ def test_native_report_summary_is_separate_from_dut_metrics():
     assert '33.33%' not in html
     assert 'N/A' in html
     assert 'including generated wrappers' not in html
-    assert 'View Details' in html
+    assert '>HTML</a>' in html
 
 
 @pytest.mark.parametrize('line_rate', ['33.33 1/3', '100.00 3/3', '-- 0/0'])
@@ -224,3 +225,12 @@ def test_report_only_shows_line_coverage_even_if_other_metrics_are_collected():
     assert 'Fsm Coverage' not in html
     assert '100.0%' not in html
     assert '33.33%' not in html
+
+
+def test_real_zero_coverage_retains_measured_denominator():
+    """Zero covered lines with a positive total is an actual measured zero percent."""
+    line = CodeCoverageResult('vcs', metrics={'line': MetricSummary(covered=0, total=12, available=True)}).to_report_dict()
+    html = render_coverage(line)
+    assert '0.0%' in html
+    assert '<td>12</td>' in html
+    assert 'No countable line coverage data' not in html
