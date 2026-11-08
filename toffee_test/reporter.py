@@ -48,7 +48,7 @@ def _code_coverage_dir_name(records):
         except (TypeError, ValueError):
             continue
         simulators.add(record.simulator)
-    return "coverage_data" if simulators and simulators <= {"vcs", "verilator"} else "line_dat"
+    return "coverage_data" if simulators and simulators <= {"uvs", "vcs", "verilator"} else "line_dat"
 
 
 def set_output_report(report_path):
@@ -408,10 +408,11 @@ def __update_testcase_coverage__(tests):
     # VCS queries are independent read-only operations on the same VDB.  The
     # Picker helper holds a shared lock, and every case has its own output
     # directory, so bounded parallelism safely avoids reopening the VDB one
-    # testcase at a time.  Keep other providers serial until they explicitly
-    # document equivalent concurrency guarantees.
+    # testcase at a time.  UVS queries only read the databases and write to a
+    # private report directory.  Keep other providers serial until they
+    # explicitly document equivalent concurrency guarantees.
     workers = 1
-    if coverage_jobs and all(record.simulator == "vcs" for _, record, _, _ in coverage_jobs):
+    if coverage_jobs and all(record.simulator in {"uvs", "vcs"} for _, record, _, _ in coverage_jobs):
         try:
             configured = int(os.environ.get("TOFFEE_CASE_COVERAGE_WORKERS", "0"))
         except ValueError:
@@ -705,6 +706,10 @@ def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *,
                 if callable(metrics) and metrics() in (None, 0):
                     return
                 dut = candidate
+        if dut is None and datfile.lower().endswith(".cdb"):
+            if fixture_name and callable(get_fixture):
+                raise RuntimeError("UVS coverage requires the current yielded DUT fixture or an explicit dut argument")
+            simulator = "uvs"
         if dut is None and datfile.lower().endswith(".vdb"):
             if fixture_name and callable(get_fixture):
                 raise RuntimeError("VCS coverage requires the current yielded DUT fixture or an explicit dut argument")
@@ -740,6 +745,12 @@ def set_line_coverage(request, datfile, ignore: Union[list[str], str] = None, *,
                 raise RuntimeError("VCS coverage database or coverage/coverage helper is unavailable; regenerate the DUT with coverage enabled")
             helper = str(candidate)
             test = normalize_vcs_testdata_name(datfile)
+        elif simulator == "uvs":
+            get_path = getattr(dut, "GetCoveragePath", None)
+            database = get_path() if callable(get_path) else ""
+            if not database:
+                raise RuntimeError("UVS coverage requires a DUT exported with picker -c")
+            test = os.path.abspath(datfile)
         else:
             get_coverage_provider(simulator)
     set_code_coverage(

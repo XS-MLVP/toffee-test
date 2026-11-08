@@ -42,7 +42,8 @@ def test_detail_combinations(tmp_path, html, application, enabled, labels):
     assert links.hrefs == [link['href'] for link in result['details']]
     assert 'View Details' not in page
     if len(labels) == 2:
-        assert '</a> | <a ' in page
+        assert '<th>Coverage Viewer</th>' in page
+        assert '</a> | <a ' not in page
 
 
 @pytest.mark.parametrize('response', [None, 'javascript:alert(1)', '', '//other-host/app'])
@@ -101,17 +102,6 @@ def test_new_provider_needs_no_template_or_registry_changes(tmp_path):
                                   context=CoverageReportContext(tmp_path, tmp_path))
     assert '>UVD</a>' in render_coverage(report)
     assert '75.0%' in render_coverage(report)
-
-
-@pytest.mark.parametrize('case', [True, False])
-def test_uvs_skeleton_is_explicit(tmp_path, case):
-    """A registered skeleton must not fabricate zero coverage or a viewer link."""
-    record = CoverageRecord('uvs', 'dut.cdb')
-    with pytest.raises(NotImplementedError, match='uvs .* coverage is not implemented'):
-        if case:
-            convert_case_coverage(record, tmp_path)
-        else:
-            convert_code_coverage([record], tmp_path)
 
 
 @pytest.mark.parametrize('enabled', [False, True])

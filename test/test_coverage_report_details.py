@@ -234,3 +234,15 @@ def test_real_zero_coverage_retains_measured_denominator():
     assert '0.0%' in html
     assert '<td>12</td>' in html
     assert 'No countable line coverage data' not in html
+
+
+def test_application_button_has_its_own_column_after_detail():
+    import re
+    from toffee_test.utils.code_coverage import ApplicationDetail
+
+    line = CodeCoverageResult('uvs', detail='coverage_data/index.html', details=[
+        ApplicationDetail('uvd', 'Open UVD', href='coverage_data/applications/uvd.html'),
+    ]).to_report_dict(coverage_gui='xpra')
+    html = render_coverage(line)
+    assert re.search(r'<th>Detail</th>\s*<th>Coverage Viewer</th>', html)
+    assert re.search(r'>HTML</a>\s*</td>\s*<td[^>]*>\s*<a[^>]*class="coverage-viewer"[^>]*>Open UVD</a>', html)

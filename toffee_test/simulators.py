@@ -41,6 +41,9 @@ _BACKENDS: dict[str, SimulatorBackend] = {
     "vcs": SimulatorBackend(
         name="vcs", forked_execution=True, coverage_suffix="", finish_none_is_success=True
     ),
+    "uvs": SimulatorBackend(
+        name="uvs", forked_execution=True, coverage_suffix=".cdb", finish_none_is_success=True
+    ),
     "verilator": SimulatorBackend(
         name="verilator", forked_execution=False, coverage_suffix=".dat", finish_none_is_success=True
     ),
