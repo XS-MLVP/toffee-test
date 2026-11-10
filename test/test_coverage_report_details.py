@@ -234,3 +234,28 @@ def test_real_zero_coverage_retains_measured_denominator():
     assert '0.0%' in html
     assert '<td>12</td>' in html
     assert 'No countable line coverage data' not in html
+
+
+@pytest.mark.parametrize('simulator,viewer,label', [
+    ('uvs', 'uvd', 'Open UVD'),
+    ('vcs', 'verdi', 'Verdi'),
+])
+def test_application_link_shares_detail_column_with_html(simulator, viewer, label):
+    import re
+    from toffee_test.utils.code_coverage import ApplicationDetail
+
+    application_href = f'coverage_data/applications/{viewer}.html'
+    line = CodeCoverageResult(simulator, detail='coverage_data/index.html', details=[
+        ApplicationDetail(viewer, label, href=application_href),
+    ]).to_report_dict(coverage_gui='xpra')
+    html = render_coverage(line)
+    assert '<th>Detail</th>' in html
+    assert '<th>Coverage Viewer</th>' not in html
+    assert re.search(
+        r'<td[^>]*>\s*<a[^>]*>HTML</a>\s*\|\s*'
+        rf'<a[^>]*data-coverage-application[^>]*>{re.escape(label)}</a>\s*</td>',
+        html,
+    )
+    links = Links()
+    links.feed(html)
+    assert links.hrefs == ['coverage_data/index.html', application_href]

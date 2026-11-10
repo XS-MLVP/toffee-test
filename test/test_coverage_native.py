@@ -140,10 +140,15 @@ def test_uvs_main_report_result(tmp_path, html, application):
         databases=[str(database)] if application else [],
     )
     expected = ([HtmlDetail("line_dat/native/uvs/index.html")] if html else [])
+    details = UvsCoverageProvider().build_details(result, output)
+    assert [detail for detail in details if isinstance(detail, HtmlDetail)] == expected
+    applications = [detail for detail in details if isinstance(detail, ApplicationDetail)]
+    assert len(applications) == int(application)
     if application:
-        expected.append(ApplicationDetail("uvd", "UVD", {"database": str(database)}, "Full native database"))
+        assert applications[0].viewer == "uvd"
+        assert applications[0].mode == "xpra"
+        assert (tmp_path / applications[0].href).is_file()
     assert result.metrics == metrics
-    assert UvsCoverageProvider().build_details(result, output) == expected
 
 
 def test_native_link_is_not_an_html_url(tmp_path):

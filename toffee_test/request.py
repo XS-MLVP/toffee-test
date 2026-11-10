@@ -171,6 +171,8 @@ class ToffeeRequest:
                 if self.coverage_simulator == "vcs":
                     name = Path(self.coverage_filename).stem or self.dut.__class__.__name__
                     self.coverage_test = re.sub(r"[^A-Za-z0-9_-]", "_", name)
+                elif self.coverage_simulator == "uvs":
+                    self.coverage_test = os.path.abspath(self.coverage_filename)
 
         return self.dut
 

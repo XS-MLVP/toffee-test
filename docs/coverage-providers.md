@@ -20,7 +20,7 @@ build_details(result, output_dir)
     将产物路径转换为 HTML/应用入口描述
     ↓
 公共层生成链接，渲染主 index.html
-    Line Coverage: 80% ... HTML | UVD
+    Line Coverage: 80% ... Detail: HTML | Open UVD
 ```
 
 | 接入者需要提供什么 | 主报告如何使用 |
@@ -198,7 +198,7 @@ provider 不需要填写 Xpra API URL，也不需要启动应用。
 - `--report-custom=coverage-gui-native`：桌面协议处理器直接启动本地应用，新增查看器需配置本地命令。
 - `--report-custom=coverage-gui-xpra`：显示 provider 提供的应用页面链接，或由 provider 生成启动页；UCAgent 只选择 GUI 模式。
 
-[UVS 骨架](../toffee_test/utils/code_coverage/uvs.py) 也按同样的两个部分组织：
+[UVS provider](../toffee_test/utils/code_coverage/uvs.py) 也按同样的两个部分组织：
 
 | 方法 | 需要实现的内容 | 返回值 |
 |---|---|---|
@@ -211,8 +211,13 @@ provider 不需要填写 Xpra API URL，也不需要启动应用。
 UVS 不需要知道 Xpra API 地址，也不需要生成本地协议链接。
 native 模式由本地处理器生成桌面链接；xpra 模式的 URL 和启动行为由 provider 实现。
 
-UVS 目前还没有实际覆盖率转换实现，数据库格式和 UVD 覆盖率命令仍待确认；VCS 仍通过 URG 生成报告。
-`convert_case()` 仅在以后需要逐用例覆盖率时再实现，与本教程的主报告接入无关。
+UVS uses `uvcov -db <compile>.cdb <run1>.cdb ... -mdb <output>/merged.cdb`
+to generate the report and save a merged database containing the selected runs.
+The Xpra link launches `uvd -ucdb <output>/merged.cdb`, avoiding commands that
+exceed the host API limit. UVD displays the full native hierarchy, including
+generated wrappers; the main report's DUT filtering does not apply to the GUI.
+Report generation only writes the launch page; clicking the link creates the
+Xpra session. The default remains HTML-only. VCS still uses URG for its reports.
 
 ## Selecting a GUI mode
 
@@ -229,7 +234,8 @@ This replaces the previous dedicated `--coverage-gui` option.
 | `--report-custom=coverage-gui-native` | HTML and available application descriptors | Desktop protocol handler launches the configured executable |
 | `--report-custom=coverage-gui-xpra` | HTML and provider-owned Xpra links | Host launches its Xpra session |
 
-Labels remain provider-owned, such as `HTML | Verdi` or `HTML | UVD`.
+Labels remain provider-owned, such as `HTML | Verdi` or `HTML | Open UVD`, and
+appear together in the existing Detail column.
 An absent HTML or application artifact is not invented by selecting a mode.
 Providers may supply a ready-to-open application `href` with `mode="xpra"`
 (or `mode="native"` for a registered native link). Toffee validates and displays
@@ -382,7 +388,8 @@ Assume the workspace is `/work/demo` and the final report is
 `/work/demo/reports/index.html`. The following is an illustrative UVS result,
 not a working UVS converter: only return it after producing and parsing the
 real artifacts.
-The UVS coverage database format and UVD coverage command are not yet verified.
+The built-in UVS provider uses compile/run `.cdb` directories and `uvd -ucdb`.
+The generic descriptor example below does not generate a launch page.
 `coverage_database` is a placeholder for a real coverage file or directory, not
 a filename-extension requirement. USDB waveform files are not evidence of the
 coverage database format.
@@ -466,5 +473,5 @@ uses the existing browser authentication. It never places credentials in reports
 An anchor pointing directly to `/api/xpra/sessions` sends GET and cannot create a
 session; link to your launch page or to an existing viewer page instead.
 
-UVS implementers must supply their actual UVD command/page and coverage parser.
+The built-in UVS provider supplies its parser and a `uvd -ucdb` launch page.
 No UCAgent coverage-viewer registration is needed.

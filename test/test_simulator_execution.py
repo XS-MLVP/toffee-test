@@ -10,7 +10,7 @@ from toffee_test.simulators import get_backend
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="VCS isolation requires POSIX fork")
-@pytest.mark.parametrize("simulator", ["vcs", "verilator"])
+@pytest.mark.parametrize("simulator", ["uvs", "vcs", "verilator"])
 @pytest.mark.parametrize("workers", [0, 2])
 def test_simulator_lifecycle_keeps_report_cases(pytester, monkeypatch, simulator, workers):
     root = Path(__file__).parents[1]
@@ -66,7 +66,7 @@ def test_verilator_coverage_path_without_native_metadata():
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="VCS isolation requires POSIX fork")
-@pytest.mark.parametrize("simulator", ["vcs", "verilator"])
+@pytest.mark.parametrize("simulator", ["uvs", "vcs", "verilator"])
 @pytest.mark.parametrize("workers", [0, 2])
 def test_factory_fixture_preserves_existing_report_setters(pytester, monkeypatch, simulator, workers):
     """Existing yielded DUT factories need neither new fixtures nor markers."""
@@ -81,9 +81,9 @@ PARENT = os.getpid()
 class DUT:
     SIMULATOR = {simulator!r}
     def __init__(self):
-        assert (os.getpid() != PARENT) == {simulator == 'vcs'!r}
+        assert (os.getpid() != PARENT) == {simulator in ('uvs', 'vcs')!r}
     def Finish(self):
-        assert (os.getpid() != PARENT) == {simulator == 'vcs'!r}
+        assert (os.getpid() != PARENT) == {simulator in ('uvs', 'vcs')!r}
 
 def create_dut():
     return nested_factory()

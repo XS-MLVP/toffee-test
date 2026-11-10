@@ -103,17 +103,6 @@ def test_new_provider_needs_no_template_or_registry_changes(tmp_path):
     assert '75.0%' in render_coverage(report)
 
 
-@pytest.mark.parametrize('case', [True, False])
-def test_uvs_skeleton_is_explicit(tmp_path, case):
-    """A registered skeleton must not fabricate zero coverage or a viewer link."""
-    record = CoverageRecord('uvs', 'dut.cdb')
-    with pytest.raises(NotImplementedError, match='uvs .* coverage is not implemented'):
-        if case:
-            convert_case_coverage(record, tmp_path)
-        else:
-            convert_code_coverage([record], tmp_path)
-
-
 @pytest.mark.parametrize('enabled', [False, True])
 def test_pytest_report_resolver_option(pytester, enabled):
     """The CLI opt-in reaches final HTML and JSON in a real pytest invocation."""
