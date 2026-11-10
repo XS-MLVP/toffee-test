@@ -42,8 +42,7 @@ def test_detail_combinations(tmp_path, html, application, enabled, labels):
     assert links.hrefs == [link['href'] for link in result['details']]
     assert 'View Details' not in page
     if len(labels) == 2:
-        assert '<th>Coverage Viewer</th>' in page
-        assert '</a> | <a ' not in page
+        assert '</a> | <a ' in page
 
 
 @pytest.mark.parametrize('response', [None, 'javascript:alert(1)', '', '//other-host/app'])

@@ -112,17 +112,13 @@ openFunctionalDetailModal();
 {% endblock %}
 
 {% block coverage %}
-{% macro code_coverage_details(line, kind='html') -%}
+{% macro code_coverage_details(line) -%}
   {%- if line.details is defined -%}
-    {% for detail in line.details|selectattr('kind', 'equalto', kind) %}{% if not loop.first %} | {% endif %}<a href="{{ detail.href|e }}"{% if detail.kind == 'application' %} data-coverage-application class="coverage-viewer"{% endif %} title="{{ detail.scope|default('')|e }}"{% if not detail.href.startswith('toffee-coverage:') %} target="_blank"{% endif %} rel="noopener">{{ detail.label|e }}</a>{% else %}N/A{% endfor %}
-  {%- elif kind == 'html' and line.detail -%}
+    {% for detail in line.details %}{% if not loop.first %} | {% endif %}<a href="{{ detail.href|e }}"{% if detail.kind == 'application' %} data-coverage-application{% endif %} title="{{ detail.scope|default('')|e }}"{% if not detail.href.startswith('toffee-coverage:') %} target="_blank"{% endif %} rel="noopener">{{ detail.label|e }}</a>{% else %}N/A{% endfor %}
+  {%- elif line.detail -%}
     <a href="{{ line.detail|e }}" target="_blank" rel="noopener">HTML</a>
   {%- else -%}N/A{%- endif -%}
 {%- endmacro %}
-{% set application_details = coverages.line.details|default([])|selectattr('kind', 'equalto', 'application')|list if coverages.line else [] %}
-<style>
-.coverage-viewer { display: inline-block; padding: 4px 10px; border: 1px solid #888; border-radius: 4px; background: #f8f8f8; text-decoration: none; }
-</style>
 <script>
 // Keep the host's workspace routing context on relative application pages.
 document.addEventListener('DOMContentLoaded', function() {
@@ -330,7 +326,6 @@ document.addEventListener('DOMContentLoaded', function() {
             <th>Hint Lines</th>
             <th>Total Lines</th>
             <th>Detail</th>
-            {% if application_details %}<th>Coverage Viewer</th>{% endif %}
           </tr>
           <tr>
             {% if coverages.line is none %}
@@ -354,9 +349,6 @@ document.addEventListener('DOMContentLoaded', function() {
             <td>{{ coverages.line.hints }}</td>
             <td>{{ coverages.line.total }}</td>
             <td style="text-align: center; white-space: nowrap;">{{ code_coverage_details(coverages.line) }}</td>
-            {% endif %}
-            {% if application_details %}
-            <td style="text-align: center; white-space: nowrap;">{{ code_coverage_details(coverages.line, 'application') }}</td>
             {% endif %}
           </tr>
         </table>

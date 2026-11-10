@@ -1,7 +1,7 @@
 # 将其他仿真器的报告接入主 index.html
 
-目标：让 Toffee 的主报告在 **Line Coverage → Detail** 中显示 HTML 入口，
-在其后的 **Coverage Viewer** 列显示 `Open UVD` 等应用按钮。这里的接入方式是链接到原生报告，
+目标：让 Toffee 的主报告在 **Line Coverage → Detail** 中显示新仿真器的
+`HTML` 或 `HTML | UVD` 等入口。这里的接入方式是链接到原生报告，
 点击后在新标签页打开；不会把原生 HTML 内容拼进主页面，也不是 iframe。
 
 **仿真器适配器只负责两部分：解析报告得到覆盖率，提供详情入口信息。**
@@ -20,7 +20,7 @@ build_details(result, output_dir)
     将产物路径转换为 HTML/应用入口描述
     ↓
 公共层生成链接，渲染主 index.html
-    Line Coverage: 80% ... Detail: HTML / Coverage Viewer: Open UVD
+    Line Coverage: 80% ... Detail: HTML | Open UVD
 ```
 
 | 接入者需要提供什么 | 主报告如何使用 |
@@ -28,7 +28,7 @@ build_details(result, output_dir)
 | 实际生成的 HTML 及 CSS、JS、子页面 | 点击 HTML 后展示原生报告 |
 | `metrics["line"]` | 展示已覆盖行数、总行数和百分比 |
 | `HtmlDetail(path=...)` | 在 Detail 列生成 HTML 链接 |
-| 可选 `ApplicationDetail(...)` | 根据 native/xpra 模式在 Coverage Viewer 列生成应用入口 |
+| 可选 `ApplicationDetail(...)` | 根据 native/xpra 模式生成应用入口 |
 
 `convert_session` 在主报告生成时调用。`records` 是本次运行提交的输入记录，
 `output_dir` 是框架准备好的覆盖率输出目录，新增仿真器当前为 `reports/line_dat/`，VCS/Verilator 为 `reports/coverage_data/`。
@@ -206,17 +206,18 @@ provider 不需要填写 Xpra API URL，也不需要启动应用。
 | `build_details()` | 根据上述路径决定显示 HTML、UVD 或两者 | `list[HtmlDetail | ApplicationDetail]` |
 
 例如，第一部分返回 `metrics["line"]` 的 80/100 后，主页面显示 80%；
-第二部分返回 HTML 和 UVD 两个描述后，Detail 与 Coverage Viewer 列按所选 GUI 模式生成相应入口。
+第二部分返回 HTML 和 UVD 两个描述后，详情列按所选 GUI 模式生成相应入口。
 
 UVS 不需要知道 Xpra API 地址，也不需要生成本地协议链接。
 native 模式由本地处理器生成桌面链接；xpra 模式的 URL 和启动行为由 provider 实现。
 
-UVS 使用 `uvcov -db <compile>.cdb <run1>.cdb ... -mdb <output>/merged.cdb`
-生成报告并保存本次报告所选运行库的合并数据库。Xpra 按钮使用
-`uvd -ucdb <output>/merged.cdb`，避免长命令超出宿主接口上限。
-UVD 显示完整原生层次，包括生成的 wrapper；主报告的 DUT 过滤不应用于 GUI。
-报告生成时只写启动页，点击按钮后才创建 Xpra 会话。默认模式仍只显示 HTML。
-VCS 仍通过 URG 生成报告。
+UVS uses `uvcov -db <compile>.cdb <run1>.cdb ... -mdb <output>/merged.cdb`
+to generate the report and save a merged database containing the selected runs.
+The Xpra link launches `uvd -ucdb <output>/merged.cdb`, avoiding commands that
+exceed the host API limit. UVD displays the full native hierarchy, including
+generated wrappers; the main report's DUT filtering does not apply to the GUI.
+Report generation only writes the launch page; clicking the link creates the
+Xpra session. The default remains HTML-only. VCS still uses URG for its reports.
 
 ## Selecting a GUI mode
 
@@ -233,8 +234,8 @@ This replaces the previous dedicated `--coverage-gui` option.
 | `--report-custom=coverage-gui-native` | HTML and available application descriptors | Desktop protocol handler launches the configured executable |
 | `--report-custom=coverage-gui-xpra` | HTML and provider-owned Xpra links | Host launches its Xpra session |
 
-Labels remain provider-owned: HTML links appear in Detail; application buttons
-appear in the following Coverage Viewer column when available.
+Labels remain provider-owned, such as `HTML | Verdi` or `HTML | Open UVD`, and
+appear together in the existing Detail column.
 An absent HTML or application artifact is not invented by selecting a mode.
 Providers may supply a ready-to-open application `href` with `mode="xpra"`
 (or `mode="native"` for a registered native link). Toffee validates and displays

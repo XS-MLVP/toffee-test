@@ -236,13 +236,26 @@ def test_real_zero_coverage_retains_measured_denominator():
     assert 'No countable line coverage data' not in html
 
 
-def test_application_button_has_its_own_column_after_detail():
+@pytest.mark.parametrize('simulator,viewer,label', [
+    ('uvs', 'uvd', 'Open UVD'),
+    ('vcs', 'verdi', 'Verdi'),
+])
+def test_application_link_shares_detail_column_with_html(simulator, viewer, label):
     import re
     from toffee_test.utils.code_coverage import ApplicationDetail
 
-    line = CodeCoverageResult('uvs', detail='coverage_data/index.html', details=[
-        ApplicationDetail('uvd', 'Open UVD', href='coverage_data/applications/uvd.html'),
+    application_href = f'coverage_data/applications/{viewer}.html'
+    line = CodeCoverageResult(simulator, detail='coverage_data/index.html', details=[
+        ApplicationDetail(viewer, label, href=application_href),
     ]).to_report_dict(coverage_gui='xpra')
     html = render_coverage(line)
-    assert re.search(r'<th>Detail</th>\s*<th>Coverage Viewer</th>', html)
-    assert re.search(r'>HTML</a>\s*</td>\s*<td[^>]*>\s*<a[^>]*class="coverage-viewer"[^>]*>Open UVD</a>', html)
+    assert '<th>Detail</th>' in html
+    assert '<th>Coverage Viewer</th>' not in html
+    assert re.search(
+        r'<td[^>]*>\s*<a[^>]*>HTML</a>\s*\|\s*'
+        rf'<a[^>]*data-coverage-application[^>]*>{re.escape(label)}</a>\s*</td>',
+        html,
+    )
+    links = Links()
+    links.feed(html)
+    assert links.hrefs == ['coverage_data/index.html', application_href]
