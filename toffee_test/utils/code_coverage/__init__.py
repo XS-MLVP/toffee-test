@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from .artifacts import get_coverage_artifact_path
 from .models import (
     ApplicationDetail,
     CoverageReportContext,
@@ -27,6 +28,7 @@ __all__ = [
     "convert_code_coverage",
     "register_coverage_provider",
     "get_coverage_provider",
+    "get_coverage_artifact_path",
 ]
 
 

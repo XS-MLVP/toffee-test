@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -67,10 +68,21 @@ def html_report_detail(
     return quote(entry.relative_to(output_dir.parent).as_posix(), safe="/")
 
 
-def write_line_coverage_summary(summary: dict, output_dir: Path) -> None:
-    """Keep the established line_dat JSON readable by existing test checkers."""
+def write_line_coverage_summary(summary: dict, output_dir: Path) -> Path | None:
+    """Publish the checker-facing summary and return its actual file path.
+
+    Artifact references are rebased relative to this JSON. Providers without
+    companion artifacts explicitly publish an empty mapping.
+    """
     if output_dir.name != "coverage_data":
         return
     path = output_dir.parent / "line_dat" / "code_coverage.json"
     path.parent.mkdir(parents=True, exist_ok=True)
+    summary = dict(summary)
+    artifacts = summary["artifacts"]
+    summary["artifacts"] = {
+        name: os.path.relpath(output_dir / value, path.parent) if value is not None else None
+        for name, value in artifacts.items()
+    }
     path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return path

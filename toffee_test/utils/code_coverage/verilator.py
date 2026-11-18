@@ -98,6 +98,7 @@ def convert_verilator_case_coverage(
         summary = json.load(source)
     summary["schema_version"] = 2
     _add_gap_metadata(summary)
+    summary["artifacts"] = {}
     summary["scope"] = {
         "type": "testcase",
         "nodeid": record.nodeid,
@@ -138,6 +139,7 @@ def convert_verilator_coverage(
     with summary_path.open(encoding="utf-8") as source:
         summary = json.load(source)
     summary["schema_version"] = 2
+    summary["artifacts"] = {"lcov": Path(merged_info).relative_to(output_dir).as_posix()}
     _add_gap_metadata(summary)
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     write_line_coverage_summary(summary, output_dir)
@@ -148,6 +150,7 @@ def convert_verilator_coverage(
         metrics=metrics,
         detail=detail,
         summary_file=f"{output_dir.name}/{summary_path.name}",
+        coverage_json=f"{output_dir.name}/{summary_path.name}",
         databases=list(dict.fromkeys(record.database for record in records)),
         ignore=ignore,
     )

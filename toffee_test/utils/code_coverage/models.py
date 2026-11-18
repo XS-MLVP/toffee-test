@@ -126,6 +126,8 @@ class CodeCoverageResult:
     report_metrics: dict[str, MetricSummary] = field(default_factory=dict)
     report_scope: str = ""
     details: list[HtmlDetail | ApplicationDetail] = field(default_factory=list)
+    # Full overview/uncovered JSON for checkers; cumulative summaries may be compact.
+    coverage_json: str = ""
 
     def to_report_dict(
         self, grate: int = 99, *,
@@ -188,6 +190,7 @@ class CodeCoverageResult:
             "detail": next((link["href"] for link in links if link["kind"] == "html"), ""),
             "details": links,
             "summary_file": self.summary_file,
+            "coverage_json": self.coverage_json,
             "metrics": {name: metric.to_dict() for name, metric in self.metrics.items()},
             "databases": list(self.databases),
             "ignore": list(self.ignore),

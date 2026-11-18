@@ -421,8 +421,9 @@ def convert_uvs_coverage(
         "metrics": {name: metric.to_dict() for name, metric in report_metrics.items()},
     }
     metrics = _metric_summaries(report)
-    write_line_coverage_summary(report, output_dir)
+    report["artifacts"] = {}
     summary_path = output_dir / ("cumulative.json" if normalized_layout else "code_coverage.json")
+    checker_path = write_line_coverage_summary(report, output_dir) or summary_path
     if normalized_layout:
         _externalize_atom_catalog(report, output_dir)
         _compact_cumulative(report)
@@ -432,6 +433,7 @@ def convert_uvs_coverage(
         metrics=metrics,
         detail=detail,
         summary_file=f"{output_dir.name}/{summary_path.name}",
+        coverage_json=checker_path.relative_to(output_dir.parent).as_posix(),
         databases=[str(merged_database.resolve())] if (merged_database / "design.dat").is_file() else [],
         ignore=ignore,
         warnings=warnings,

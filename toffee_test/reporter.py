@@ -634,8 +634,14 @@ def process_context(context, config):
                 return str(o)
             except:
                 return None
+        # HTML uses None to hide absent sections; the machine report always
+        # publishes coverage objects so consumers have one stable JSON contract.
+        document = {**context, "coverages": {
+            "line": context["coverages"]["line"] if coverage_line_list else {},
+            "functional": context["coverages"]["functional"] if coverage_func_list else {},
+        }}
         with open(os.path.join(__output_report_dir__, "toffee_report.json"), "w") as f:
-            json.dump(context, f, indent=4, default=default)
+            json.dump(document, f, indent=4, default=default)
 
 
 def set_func_coverage(request, g):

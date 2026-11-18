@@ -35,6 +35,57 @@ build_details(result, output_dir)
 不要写死目录名，使用传入的 `output_dir` 和 `html_report_detail()`。
 仿真器工具的调用、输入合并和统计解析都放在这个方法中。
 
+## 查询本次测试的报告文件
+
+执行器在 pytest 结束后，使用自己已知的总报告 JSON 精确路径查询文件，不需要知道覆盖率
+目录布局。运行时需启用 `--toffee-report --report-dump-json`：
+
+```python
+from toffee_test import gate_toffee_test_file
+
+# executor_report_json 来自本次测试执行器配置的报告位置。
+report_json = gate_toffee_test_file(executor_report_json, "report_json")
+coverage_json = gate_toffee_test_file(executor_report_json, "coverage_json")
+lcov = gate_toffee_test_file(executor_report_json, "lcov")
+```
+
+`report_json` 是总报告本身；`coverage_json` 是保留完整 `overview` / `uncovered` 的原始
+checker 输入；`lcov` 是该 JSON 声明的配套 LCOV。VCS、UVS 的 `summary_file` 指向压缩后的
+累计统计，不能代替 checker 输入。Provider 在 `CodeCoverageResult.coverage_json` 声明
+完整 JSON 路径（相对于总报告目录）；即使该文件与 `summary_file` 相同，也必须明确
+设置 `coverage_json`，接口不会从其它字段回退推断。配套文件由 checker JSON 的
+`artifacts` 对象声明，相对于该 JSON。
+
+总报告 JSON 始终输出 `coverages` 对象，内部 `line`、`functional` 也始终为对象；没有
+对应覆盖率时输出 `{}`，不输出 `null`。HTML 内部仍保留原有的空值和零计数展示结构，
+这些展示细节不会进入机器报告。消费者直接读取统一 JSON 契约，不兼容历史空值或字段形状。
+
+| 结果 | 接口行为 |
+|---|---|
+| 没有覆盖率、尚未汇总，或 provider 不提供所请求产物 | 返回 `None` |
+| 报告或声明的文件不存在 | 抛出 `FileNotFoundError` |
+| 当前报告记录覆盖率转换错误 | 查询覆盖率文件时抛出 `RuntimeError`，包含原始错误；总报告仍可查询 |
+| JSON、路径声明或请求类型无效 | 抛出 `ValueError` |
+
+接口每次重新读取指定报告，不缓存、不扫描目录、不回退到上次产物。执行器必须确认本次
+pytest 已完成报告写入后再查询；若进程在写报告前被终止，旧报告不能作为本次结果。
+接口只读文件；authored-source 过滤统计、阈值计算等派生结果应另存，不能覆盖返回的原始
+JSON。调用方应使用返回的路径记录错误位置和分析报告，不使用 `parent.parent` 或
+`with_name("merged.info")` 推导其它文件。路径引用必须留在总报告目录内，支持 JSON 和
+LCOV 位于不同子目录并使用任意文件名。消费者和生成端需同步升级，历史报告需重新生成。
+
+## 读取覆盖率配套文件
+
+已知完整 checker JSON 路径时，可使用底层 `get_coverage_artifact_path()`，返回 `Path`
+或 `None`，不要求目标存在。总报告查询接口会进一步检查所声明文件是否实际存在。
+
+Verilator 汇总 JSON 的 `artifacts.lcov` 声明相对于该 JSON 的路径。标准目录中的
+值为 `merged.info`；另行发布的 checker JSON 的值为 `../coverage_data/merged.info`。
+移动整个报告目录后仍可解析。LCOV 只在 provider 目录生成一份，不复制到其它目录。
+不提供 LCOV 的 provider 或逐用例观测 JSON 使用 `artifacts: {}` 显式声明。
+报告必须声明 `artifacts` 对象；缺少字段、无效字段或绝对路径会抛出 `ValueError`。
+文件缺失时不会猜测文件名或回退到旧文件。
+
 ## 最小示例：接入已经生成的 HTML 报告
 
 下面的适配器接收**一个已经汇总好的报告目录**。不演示厂商的生成命令：

@@ -1071,7 +1071,8 @@ def convert_vcs_coverage(
             "scope": report_scope,
             "metrics": {name: metric.to_dict() for name, metric in report_metrics.items()},
         }
-    write_line_coverage_summary(final_report, output_dir)
+    final_report["artifacts"] = {}
+    checker_path = write_line_coverage_summary(final_report, output_dir) or summary_path
     if normalized_layout:
         _externalize_atom_catalog(final_report, output_dir)
         _compact_cumulative(final_report)
@@ -1099,6 +1100,7 @@ def convert_vcs_coverage(
         metrics=metrics,
         detail=detail,
         summary_file=summary_file,
+        coverage_json=checker_path.relative_to(output_dir.parent).as_posix(),
         databases=databases,
         ignore=ignore,
         warnings=warnings,

@@ -597,16 +597,22 @@ def test_rejects_mixed_simulators(tmp_path):
         )
 
 
-def test_legacy_verilator_record_uses_provider_neutral_result(tmp_path, monkeypatch):
+@pytest.mark.parametrize("coverage_dir", ["line_dat", "coverage_data"])
+def test_legacy_verilator_record_uses_provider_neutral_result(tmp_path, monkeypatch, coverage_dir):
     from toffee_test.utils.code_coverage import verilator
 
     database = tmp_path / "coverage.dat"
     database.write_text("# SystemC::Coverage-3\n", encoding="utf-8")
+    lcov = "SF:/rtl/top.v\nDA:1,1\nDA:2,0\nend_of_record\n"
+    legacy_dir = tmp_path / "line_dat"
+    legacy_dir.mkdir()
+    (legacy_dir / "merged.info").write_text("stale LCOV", encoding="utf-8")
+    (legacy_dir / "code_coverage.json").write_text("{}", encoding="utf-8")
 
     def fake_convert(records, output_dir):
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
-        (output / "merged.info").write_text("", encoding="utf-8")
+        (output / "merged.info").write_text(lcov, encoding="utf-8")
         (output / "code_coverage.json").write_text(
             json.dumps(
                 {
@@ -635,13 +641,33 @@ output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])
 
     result = convert_code_coverage(
         [{"data": str(database), "ignore": []}],
-        tmp_path / "line_dat",
+        tmp_path / coverage_dir,
         genhtml=str(genhtml),
     )
 
     assert result.simulator == "verilator"
     assert (result.metrics["line"].covered, result.metrics["line"].total) == (8, 10)
-    assert result.detail == "line_dat/index.html"
+    assert result.detail == f"{coverage_dir}/index.html"
+    # Consumers follow the JSON reference even when an adjacent LCOV is stale.
+    summary = json.loads((legacy_dir / "code_coverage.json").read_text())
+    assert summary["overview"]["total"]["line"] == 10
+    assert summary["overview"]["miss"]["line"] == 2
+    assert (legacy_dir / "merged.info").read_text() == (
+        lcov if coverage_dir == "line_dat" else "stale LCOV"
+    )
+    assert (tmp_path / coverage_dir / "merged.info").read_text() == lcov
+    from toffee_test.utils.code_coverage import get_coverage_artifact_path
+
+    assert get_coverage_artifact_path(legacy_dir / "code_coverage.json", "lcov") == (
+        tmp_path / coverage_dir / "merged.info"
+    )
+    from toffee_test import gate_toffee_test_file
+
+    report = tmp_path / "execution.json"
+    report.write_text(json.dumps({"coverages": {"line": result.to_report_dict()}}))
+    assert gate_toffee_test_file(report) == tmp_path / coverage_dir / "code_coverage.json"
+    assert gate_toffee_test_file(report, "lcov") == tmp_path / coverage_dir / "merged.info"
+
 
 
 def test_verilator_case_coverage_writes_normalized_json_only(tmp_path, monkeypatch):
@@ -1074,6 +1100,13 @@ def test_vcs_current_report_preserves_checker_line_summary(tmp_path):
     assert checker["overview"]["total"]["line"] == result.metrics["line"].total
     assert checker["overview"]["miss"]["line"] == result.metrics["line"].uncovered
     assert checker["uncovered"]["data"]["/rtl/top.v"]["modules"]["Top"]["line"] == ["11-12", "15-15"]
+    from toffee_test import gate_toffee_test_file
+
+    report = tmp_path / "execution.json"
+    report.write_text(json.dumps({"coverages": {"line": result.to_report_dict()}}))
+    assert gate_toffee_test_file(report) == tmp_path / result.coverage_json
+    assert gate_toffee_test_file(report) != tmp_path / result.summary_file
+    assert gate_toffee_test_file(report, "lcov") is None
 
 
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])

@@ -221,10 +221,17 @@ def test_every_uncovered_target_becomes_one_atom(design):
 
 
 def test_ucagent_checker_reads_the_line_summary(design):
-    """Follow the fields UCAgent's parse_un_coverage_json reads."""
+    """Discover the full checker JSON instead of the compact cumulative report."""
+    from toffee_test import gate_toffee_test_file
+
     output = design.root / "report" / "coverage_data"
-    convert_code_coverage(_record(design, "a.cdb"), output)
-    data = json.loads((design.root / "report" / "line_dat" / "code_coverage.json").read_text())
+    result = convert_code_coverage(_record(design, "a.cdb"), output)
+    report = output.parent / "execution.json"
+    report.write_text(json.dumps({"coverages": {"line": result.to_report_dict()}}))
+    checker = gate_toffee_test_file(report, "coverage_json")
+    assert checker != output.parent / result.summary_file
+    assert gate_toffee_test_file(report, "lcov") is None
+    data = json.loads(checker.read_text())
     assert data["overview"]["total"]["line"] == 8
     assert data["overview"]["miss"]["line"] == 4
     uncovered = data["uncovered"]["data"]

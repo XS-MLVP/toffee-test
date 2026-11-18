@@ -155,13 +155,14 @@ def test_factory_detection_supports_closures_and_recursive_helpers():
     assert _fixture_declares_forked_dut(item)
 
 
-def test_checker_line_summary_does_not_require_new_path_or_schema(tmp_path):
-    """Both providers export the ordinary overview/uncovered JSON beside native data."""
+def test_checker_line_summary_returns_its_path_and_preserves_statistics(tmp_path):
+    """Checker JSON retains full statistics and explicitly declares no companion artifacts."""
     from toffee_test.utils.code_coverage.common import write_line_coverage_summary
 
-    summary = {"overview": {"total": {"line": 5}, "miss": {"line": 1}}, "uncovered": {"data": {}}}
-    write_line_coverage_summary(summary, tmp_path / "coverage_data")
-    assert json.loads((tmp_path / "line_dat/code_coverage.json").read_text()) == summary
+    summary = {"overview": {"total": {"line": 5}, "miss": {"line": 1}}, "uncovered": {"data": {}}, "artifacts": {}}
+    path = write_line_coverage_summary(summary, tmp_path / "coverage_data")
+    assert path == tmp_path / "line_dat/code_coverage.json"
+    assert json.loads(path.read_text()) == summary
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires fork")

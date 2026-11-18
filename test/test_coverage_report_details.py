@@ -190,17 +190,23 @@ def test_final_coverage_includes_registered_records_from_failed_tests(monkeypatc
     assert list(context['test_abstract_info'].values()) == [outcome]
 
 
-def test_final_coverage_without_registered_data_remains_unavailable(monkeypatch):
+def test_final_coverage_without_registered_data_remains_unavailable(monkeypatch, tmp_path):
     """A setup failure with no hardware trace must never invent coverage."""
     from types import SimpleNamespace
     context = {'metadata': {}, 'session': SimpleNamespace(), 'tests': [
         {'item': SimpleNamespace(nodeid='test_device.py::test_device', function=None),
          'status': {'word': 'ERROR'}, 'phases': [{'report': SimpleNamespace()}]}]}
     monkeypatch.setattr(reporter, 'get_toffee_custom_key_value', lambda: {})
+    monkeypatch.setattr(reporter, '__output_report_dir__', str(tmp_path))
     config = SimpleNamespace(getoption=lambda name: False,
-                             option=SimpleNamespace(toffee_report_dump_json=False))
+                             option=SimpleNamespace(toffee_report_dump_json=True))
     reporter.process_context(context, config)
     assert context['coverages']['line'] is None
+    assert context['coverages']['functional']['groups'] == []
+    import json
+    document = json.loads((tmp_path / 'toffee_report.json').read_text())
+    assert document['coverages'] == {'line': {}, 'functional': {}}
+    assert document['tests'][0]['status']['word'] == 'ERROR'
 
 
 def test_report_only_shows_line_coverage_even_if_other_metrics_are_collected():
